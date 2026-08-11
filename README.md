@@ -49,7 +49,36 @@ The server will be available at:
 * Interactive API Documentation (Swagger UI): `http://127.0.0.1:8000/docs`
 * OpenAPI Schema: `http://127.0.0.1:8000/openapi.json`
 
-### 3. Running Quality & Verification Tools
+### 3. CLI Usage
+
+Discover scenarios, start investigations, execute actions, and enter interactive play mode via Typer CLI:
+
+```bash
+# List all available scenarios
+python -m cli scenarios
+
+# Start a new investigation session for a scenario
+python -m cli start test_case
+
+# View player-facing game state for a session
+python -m cli state <session_id>
+
+# Execute a single investigation action (inspect, move, interview, examine, advance, solve)
+python -m cli action <session_id> inspect
+python -m cli action <session_id> move location_01
+python -m cli action <session_id> examine evidence_01
+python -m cli action <session_id> interview suspect_01
+python -m cli action <session_id> advance
+python -m cli action <session_id> solve suspect_01
+
+# View chronological audit event history for a session
+python -m cli history <session_id>
+
+# Enter interactive investigation shell
+python -m cli play <session_id>
+```
+
+### 4. Running Quality & Verification Tools
 
 Run tests with `pytest`:
 

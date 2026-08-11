@@ -29,7 +29,10 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*"]
+include = ["app*", "cli*"]
+
+[project.scripts]
+detective = "cli.app:app"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -55,4 +58,4 @@ select = [
 ignore = []
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "cli"]
