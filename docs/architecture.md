@@ -84,6 +84,7 @@ DetectiveAI follows a clean tiered architecture:
 | Component | Tech Stack | Key Responsibilities |
 | :--- | :--- | :--- |
 | **FastAPI** | Python 3.12, FastAPI | HTTP routing, request/response validation, API docs, session entrypoints. |
+| **Scenario Layer** | Python 3.12, Pydantic | Version-controlled scenario JSON definitions, registry discovery, loader service, integrity & cross-reference validation. |
 | **Game Engine** | Python 3.12, Pydantic | State transitions, action validation, rule execution, scoring, timeline progression. |
 | **Database** | SQLAlchemy, SQLite | Persisting active player sessions, case ground-truth static data, action logs. |
 | **Lamatic Layer** | Lamatic Agent Workflows | Dialogue generation, evidence interpretation, contradiction analysis, solution grading. |
@@ -123,7 +124,33 @@ The database layer provides persistent storage for cases and active games:
 
 ---
 
-## 10. Future Lamatic Responsibility
+## 10. Scenario Management Layer
+
+The Scenario Management Layer provides a scenario-agnostic system for defining, loading, validating, and discovering mystery cases:
+
+```
+Scenario Files
+      ↓
+Scenario Registry
+      ↓
+Scenario Loader
+      ↓
+Pydantic Validation
+      ↓
+Validated Scenario
+      ↓
+Game Engine
+```
+
+Key principles of the Scenario Layer:
+* **Version-Controlled & Deterministic**: Scenarios are stored as structured, human-readable JSON definition files under `scenarios/<scenario_id>/`.
+* **Database Independent**: Scenario loading and validation are completely decoupled from database mutations. Scenarios remain input/configuration models (`ScenarioDefinition`).
+* **Rigorous Integrity Validation**: Cross-entity references (e.g. evidence locations, timeline suspects, solution culprit, stage requirements) and semver format are validated deterministically before a scenario is accepted.
+* **Ground Truth Separation**: Authoritative ground-truth data (culprit identity, motives, secret timeline events, solution details) is loaded for backend validation but strictly isolated from player-facing schemas (`PublicScenarioDefinition`).
+
+---
+
+## 11. Future Lamatic Responsibility
 
 Lamatic will provide AI reasoning, agent orchestration, and natural language generation without owning game truth:
 * **Suspect Dialogue**: Generates dynamic, in-character suspect responses constrained by the suspect's current emotional state and known facts.
@@ -211,9 +238,10 @@ Future milestones will introduce specialized Lamatic agents, each with a tightly
 
 ## 16. Development Phases
 
-* **Milestone 0 (Current)**: Project foundation, modern `pyproject.toml` setup, FastAPI app skeleton, `/health` endpoint, pytest harness, Ruff configuration, architecture documentation.
+* **Milestone 0**: Project foundation, modern `pyproject.toml` setup, FastAPI app skeleton, `/health` endpoint, pytest harness, Ruff configuration, architecture documentation.
 * **Milestone 1**: Core Domain Models & Database Schema (Case, Suspect, Location, Evidence, GameState) using SQLAlchemy & Pydantic.
-* **Milestone 2**: Deterministic Game Engine & Rule Engine implementation (State Machine, Action Validation, Ground Truth Scenarios).
-* **Milestone 3**: CLI Development using Typer for end-to-end terminal investigation play.
-* **Milestone 4**: Lamatic Integration (Suspect Agent, Evidence Agent, Solution Evaluator).
-* **Milestone 5**: Scenario Expansion, Advanced Contradiction Detection, Polish & Tuning.
+* **Milestone 2 (Current)**: Scenario Definition, Loader, Integrity Validator, Discovery Registry, and Ground-Truth Isolation.
+* **Milestone 3**: Deterministic Game Engine & Rule Engine implementation (State Machine, Action Validation, Scoring).
+* **Milestone 4**: CLI Development using Typer for end-to-end terminal investigation play.
+* **Milestone 5**: Lamatic Integration (Suspect Agent, Evidence Agent, Solution Evaluator).
+* **Milestone 6**: Scenario Expansion, Advanced Contradiction Detection, Polish & Tuning.
