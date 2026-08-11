@@ -150,7 +150,32 @@ Key principles of the Scenario Layer:
 
 ---
 
-## 11. Future Lamatic Responsibility
+## 11. Deterministic Game Engine & Investigation Lifecycle
+
+The Game Engine serves as the central, authoritative state machine governing investigation sessions:
+
+```
+Scenario Layer (Immutable World)
+      ↓
+Game Session (Player-Specific Mutable State)
+      ↓
+Game Engine (Authoritative Action Validation & Rule Engine)
+      ↓
+State Transition (Progress, Stage, Score, Discoveries)
+      ↓
+GameEvent Audit Log (Append-Only Event Stream)
+```
+
+Key principles of the Game Engine architecture:
+* **Scenario Immutability**: The scenario definition remains immutable throughout gameplay.
+* **Player Session Isolation**: `GameSession` encapsulates player-specific mutable state (current location, stage, discovered evidence, interviewed suspects, visited locations, score).
+* **Central Action Validation**: All investigation actions (`MOVE`, `INSPECT`, `INTERVIEW`, `EXAMINE_EVIDENCE`, `ADVANCE_STAGE`, `SUBMIT_SOLUTION`) pass through `GameEngine.execute_action()`.
+* **Append-Only Audit Log**: Every executed action creates a persistent `GameEvent` record documenting the session ID, action type, target type, target ID, timestamp, and structured output.
+* **Non-Mutating AI Boundary**: AI/Lamatic agents operate strictly on top of this engine and cannot directly mutate authoritative game state.
+
+---
+
+## 12. Future Lamatic Responsibility
 
 Lamatic will provide AI reasoning, agent orchestration, and natural language generation without owning game truth:
 * **Suspect Dialogue**: Generates dynamic, in-character suspect responses constrained by the suspect's current emotional state and known facts.
@@ -240,8 +265,8 @@ Future milestones will introduce specialized Lamatic agents, each with a tightly
 
 * **Milestone 0**: Project foundation, modern `pyproject.toml` setup, FastAPI app skeleton, `/health` endpoint, pytest harness, Ruff configuration, architecture documentation.
 * **Milestone 1**: Core Domain Models & Database Schema (Case, Suspect, Location, Evidence, GameState) using SQLAlchemy & Pydantic.
-* **Milestone 2 (Current)**: Scenario Definition, Loader, Integrity Validator, Discovery Registry, and Ground-Truth Isolation.
-* **Milestone 3**: Deterministic Game Engine & Rule Engine implementation (State Machine, Action Validation, Scoring).
+* **Milestone 2**: Scenario Definition, Loader, Integrity Validator, Discovery Registry, and Ground-Truth Isolation.
+* **Milestone 3 (Current)**: Game State and Investigation Lifecycle (Deterministic Game Engine, Session Service, Action Validation, Audit Log).
 * **Milestone 4**: CLI Development using Typer for end-to-end terminal investigation play.
 * **Milestone 5**: Lamatic Integration (Suspect Agent, Evidence Agent, Solution Evaluator).
 * **Milestone 6**: Scenario Expansion, Advanced Contradiction Detection, Polish & Tuning.
