@@ -7,6 +7,8 @@ from sqlalchemy import select
 
 from app.core.exceptions import GameEngineError
 from app.db.database import SessionLocal, init_db
+from app.lamatic.agent import DetectiveAgent
+from app.lamatic.exceptions import LamaticError
 from app.models.game_event import GameEvent
 from app.scenarios.exceptions import ScenarioError
 from app.scenarios.loader import ScenarioLoader
@@ -185,13 +187,17 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
                 print(format_game_state(cur_state))
                 continue
 
-            if cmd == "history":
-                events = db.scalars(
-                    select(GameEvent)
-                    .where(GameEvent.session_id == session_id)
-                    .order_by(GameEvent.timestamp)
-                ).all()
-                print(format_history(list(events)))
+            if cmd == "ask":
+                if not arg:
+                    print(format_error("Usage: ask <message>"))
+                    continue
+                try:
+                    agent = DetectiveAgent()
+                    res = agent.ask(arg)
+                    print("\nDetective AI (Lamatic Agent):")
+                    print(res.content)
+                except LamaticError as err:
+                    print(f"[Lamatic Error]\n{err}")
                 continue
 
             # Action execution in REPL
@@ -231,11 +237,24 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
         db.close()
 
 
+def ask_cmd(message: str) -> None:
+    """Send a question or prompt to the prototype Lamatic AgentKit agent."""
+    try:
+        agent = DetectiveAgent()
+        response = agent.ask(message)
+        print("\nDetective AI (Lamatic Agent):")
+        print(response.content)
+    except LamaticError as err:
+        print(f"[Lamatic Error]\n{err}")
+        sys.exit(1)
+
+
 def _print_interactive_help() -> None:
     """Display interactive shell help menu."""
     help_text = """
 Available Interactive Commands:
 
+  ask <message>           Ask the prototype Lamatic AI agent a question
   inspect                 Inspect current location for evidence
   move <location_id>      Move to an unlocked location
   interview <suspect_id>  Interview a suspect

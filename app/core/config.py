@@ -14,5 +14,11 @@ class Settings(BaseModel):
     api_v1_prefix: str = "/api/v1"
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./detective_ai.db")
 
+    # Lamatic AgentKit Settings
+    lamatic_endpoint: str | None = os.getenv("LAMATIC_ENDPOINT")
+    lamatic_project_id: str | None = os.getenv("LAMATIC_PROJECT_ID")
+    lamatic_api_key: str | None = os.getenv("LAMATIC_API_KEY")
+    lamatic_flow_id: str | None = os.getenv("LAMATIC_FLOW_ID")
+
 
 settings = Settings()

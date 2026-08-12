@@ -209,17 +209,16 @@ The Command Line Interface (CLI) serves as a presentation adapter over applicati
 
 ```
 CLI Presentation Layer (Typer / Rich)
-      ↓
-Application Services (SessionService, ScenarioRegistry)
-      ↓
-Game Engine (Authoritative State Machine)
-      ↓
-Database Layer (SQLAlchemy / SQLite)
+  │
+  ├──────> GameEngine (Authoritative State Machine) ──> Database Layer
+  │
+  └──────> Lamatic Adapter (LamaticClient / DetectiveAgent) ──> Lamatic AgentKit Agent
 ```
 
 Key principles of the CLI Layer:
 * **Zero Gameplay Rules**: The CLI contains no game rules, evidence discovery logic, or stage progression logic.
 * **Strict Adapter Pattern**: Translates terminal commands into `GameActionDTO` objects and delegates execution to `GameEngine.execute_action()`.
+* **Isolated AI Adapter**: CLI requests to the Lamatic agent route through `LamaticClient` / `DetectiveAgent`. The Lamatic adapter is intentionally isolated from the deterministic `GameEngine`.
 * **Confidentiality Preservation**: Consumes player-facing DTOs (`GameStateDTO`, `ActionResultDTO`) to format terminal output without revealing ground truth (`culprit_id`, `motive`, secret timeline).
 * **Persistent Sessions**: Uses local database sessions (`SessionLocal()`) allowing players to start an investigation, exit the terminal, and resume the session later (`python -m cli play <session_id>`).
 
@@ -289,6 +288,7 @@ Future milestones will introduce specialized Lamatic agents, each with a tightly
 * **Milestone 1**: Core Domain Models & Database Schema (Case, Suspect, Location, Evidence, GameState) using SQLAlchemy & Pydantic.
 * **Milestone 2**: Scenario Definition, Loader, Integrity Validator, Discovery Registry, and Ground-Truth Isolation.
 * **Milestone 3**: Game State and Investigation Lifecycle (Deterministic Game Engine, Session Service, Action Validation, Audit Log).
-* **Milestone 4 (Current)**: CLI Investigation Interface (Typer CLI, Interactive REPL, Command Mapping, Confidentiality Formatting).
-* **Milestone 5**: Lamatic Integration (Suspect Agent, Evidence Agent, Solution Evaluator).
+* **Milestone 4**: CLI Investigation Interface (Typer CLI, Interactive REPL, Command Mapping, Confidentiality Formatting).
+* **Milestone 5A (Current)**: Lamatic AgentKit Integration Spike (Official SDK Adapter, Connectivity Prototype, Configuration, Testing Harness).
+* **Milestone 5B**: Game-State Aware AI Agents (Suspect Agent, Evidence Agent, Solution Evaluator).
 * **Milestone 6**: Scenario Expansion, Advanced Contradiction Detection, Polish & Tuning.

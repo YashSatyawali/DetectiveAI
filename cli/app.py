@@ -6,6 +6,7 @@ import typer
 
 from cli.commands import (
     action_cmd,
+    ask_cmd,
     history_cmd,
     play_cmd,
     scenarios_cmd,
@@ -78,6 +79,16 @@ def play_interactive(
 ) -> None:
     """Enter interactive investigation shell mode."""
     play_cmd(session_id)
+
+
+@app.command("ask")
+def ask_agent(
+    message: Annotated[
+        str, typer.Argument(help="Message or question to send to the Lamatic agent")
+    ],
+) -> None:
+    """Send a question or message to the prototype Lamatic agent."""
+    ask_cmd(message)
 
 
 if __name__ == "__main__":

@@ -93,6 +93,31 @@ ruff check .
 ruff format --check .
 ```
 
+# Lamatic AgentKit
+
+DetectiveAI integrates with the official **Lamatic AgentKit** Python SDK (`lamatic`) to enable AI-powered reasoning and conversational agents.
+
+### Configuration
+
+Set the following environment variables (or define them in `.env`):
+
+```env
+LAMATIC_ENDPOINT=https://your-project.lamatic.ai/api/graphql
+LAMATIC_PROJECT_ID=your-project-id
+LAMATIC_API_KEY=your-api-key
+LAMATIC_FLOW_ID=your-flow-id
+```
+
+### Running the Test Command
+
+Test the prototype Lamatic agent directly from the CLI:
+
+```bash
+python -m cli ask "What makes a good detective?"
+```
+
+> **Note**: The current agent integration is a connectivity and architecture prototype (Milestone 5A). It operates strictly outside the deterministic GameEngine and has no access to active game sessions, database states, or scenario ground truth.
+
 ## Repository Structure
 
 ```
