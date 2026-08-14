@@ -4,6 +4,7 @@ from typing import Annotated
 
 import typer
 
+from app.core.logging import configure_logging
 from cli.commands import (
     action_cmd,
     ask_cmd,
@@ -16,6 +17,8 @@ from cli.commands import (
     start_cmd,
     state_cmd,
 )
+
+configure_logging()
 
 app = typer.Typer(
     name="detective",

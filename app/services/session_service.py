@@ -1,5 +1,6 @@
 """Session management service for creating, retrieving, and updating game sessions."""
 
+import logging
 import uuid
 from typing import Any
 
@@ -14,6 +15,8 @@ from app.models.location import Location
 from app.scenarios.loader import ScenarioLoader
 from app.scenarios.registry import ScenarioRegistry
 from app.schemas.game_state import GameStateDTO, SessionStatus
+
+logger = logging.getLogger(__name__)
 
 
 class SessionService:
@@ -41,6 +44,7 @@ class SessionService:
         4. Persists GameSession and initial GameEvent record in the database.
         5. Returns initial GameStateDTO.
         """
+        logger.info("Starting new game session for scenario_id=%s", scenario_id)
         scenario = self.loader.load(scenario_id)
 
         # 2. Ensure parent Case DB entry exists for foreign key integrity
@@ -121,12 +125,24 @@ class SessionService:
         db.add(start_event)
         db.commit()
 
+        logger.info(
+            "Created session_id=%s scenario_id=%s initial_stage=%s initial_location=%s",
+            session.id,
+            scenario.scenario_id,
+            starting_stage.id,
+            starting_loc_id,
+        )
+
         return self.to_game_state_dto(session)
 
     def get_session(self, session_id: str, db: Session) -> GameSession:
         """Fetch a GameSession by ID or raise SessionNotFoundError."""
         session = db.scalar(select(GameSession).where(GameSession.id == session_id))
         if not session:
+            logger.warning(
+                "Session retrieval failed: session_id=%s not found in database",
+                session_id,
+            )
             raise SessionNotFoundError(
                 f"Game session '{session_id}' not found in database."
             )

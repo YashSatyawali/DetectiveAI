@@ -155,6 +155,29 @@ detective-ai/
 └── README.md         # Project documentation
 ```
 
+## Application Logging
+
+DetectiveAI features a centralized application logging system using Python's standard `logging` library.
+
+### Key Highlights
+- **Centralized Configuration (`app/core/logging.py`)**: Initialized automatically on FastAPI and CLI startup (`configure_logging()`).
+- **Rotating File Handler**: Writes to `logs/detective_ai.log` with automatic rotation at 10 MB (`maxBytes=10*1024*1024`) and 5 backup files (`backupCount=5`) encoded in UTF-8. The `logs/` directory is created automatically if not present.
+- **Structured Metadata Format**:
+  ```text
+  %(asctime)s | %(levelname)s | %(name)s | %(filename)s:%(lineno)d | %(funcName)s | %(message)s
+  ```
+- **Operational Coverage**:
+  - `GameEngine`: Action validation, stage requirements checking, and state progression.
+  - `SessionService` & `ScenarioLoader`/`ScenarioRegistry`: Session lifecycle and scenario catalog discovery.
+  - `InvestigationTools`: Tool invocations and authoritative rule enforcement.
+  - `LamaticClient`: Flow invocation start, duration tracking (`duration_ms`), status codes, and network error handling.
+  - `SuspectAgent`, `EvidenceAgent`, `SolutionEvaluator`: Agent requests and execution lifecycle.
+  - `CLI Commands`: User command invocations, parameter inputs, and warnings/errors.
+- **Security & Confidentiality**:
+  - Raw API keys, authorization headers, and bearer tokens are strictly omitted.
+  - Scenario ground truth (`solution.json`, secret events, ground-truth culprit) is never written to log sinks.
+
 ## Architecture
 
 For details on component responsibilities, state authority principles, AI agent architecture, and development phases, see [`docs/architecture.md`](docs/architecture.md).
+

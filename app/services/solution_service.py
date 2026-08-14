@@ -1,5 +1,6 @@
 """Application service for orchestrating case solution submission and evaluation."""
 
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
@@ -22,6 +23,8 @@ from app.schemas.solution_evaluation import SolutionEvaluation, SolutionSubmissi
 from app.services.game_engine import GameEngine
 from app.services.investigation_context import InvestigationContextBuilder
 from app.services.session_service import SessionService
+
+logger = logging.getLogger(__name__)
 
 
 class SolutionEvaluationService:
@@ -51,12 +54,25 @@ class SolutionEvaluationService:
         db: Session,
     ) -> tuple[ActionResultDTO, SolutionEvaluation]:
         """Validate submission, run AI evaluation, and persist audit event."""
+        logger.info(
+            "Solution submission evaluation started for session_id=%s "
+            "accused_culprit=%s evidence_count=%d",
+            submission.session_id,
+            submission.culprit_id,
+            len(submission.supporting_evidence_ids),
+        )
+
         # 1. Validate active session existence and completion status
         session_obj = self.session_service.get_session(submission.session_id, db=db)
         if session_obj.status in (
             SessionStatus.SOLVED.value,
             SessionStatus.FAILED.value,
         ):
+            logger.warning(
+                "Solution submission rejected: session %s is already completed (%s)",
+                submission.session_id,
+                session_obj.status,
+            )
             raise SessionAlreadyCompletedError(
                 f"Cannot submit solution: session '{submission.session_id}' "
                 "is already completed."
@@ -70,6 +86,11 @@ class SolutionEvaluationService:
             (s for s in scenario_def.suspects if s.id == submission.culprit_id), None
         )
         if not suspect:
+            logger.warning(
+                "Solution submission failed: accused suspect %s does not exist "
+                "in scenario",
+                submission.culprit_id,
+            )
             raise InvalidSolutionError(
                 f"Suspect '{submission.culprit_id}' does not exist in scenario."
             )
@@ -78,6 +99,11 @@ class SolutionEvaluationService:
         for ev_id in submission.supporting_evidence_ids:
             ev_found = next((e for e in scenario_def.evidence if e.id == ev_id), None)
             if not ev_found:
+                logger.warning(
+                    "Solution submission failed: supporting evidence %s does not "
+                    "exist in scenario",
+                    ev_id,
+                )
                 raise InvalidSolutionError(
                     f"Evidence '{ev_id}' does not exist in scenario."
                 )
@@ -97,7 +123,13 @@ class SolutionEvaluationService:
                 objective_culprit_correct=objective_culprit_correct,
                 context=inv_context,
             )
-        except (LamaticError, Exception):
+        except (LamaticError, Exception) as err:
+            logger.warning(
+                "AI solution evaluation unavailable (%s), using deterministic "
+                "fallback for session_id=%s",
+                err,
+                submission.session_id,
+            )
             # Graceful offline fallback evaluation if Lamatic is unavailable
             evaluation = self._build_fallback_evaluation(
                 submission=submission,
@@ -120,6 +152,16 @@ class SolutionEvaluationService:
 
         db.commit()
         db.refresh(session_obj)
+
+        logger.info(
+            "Solution submission finalized for session_id=%s objective_correct=%s "
+            "evaluation_score=%d final_session_status=%s total_score=%d",
+            submission.session_id,
+            objective_culprit_correct,
+            evaluation.overall_score,
+            session_obj.status,
+            session_obj.score,
+        )
 
         # 8. Record audit GameEvent
         updated_state = self.session_service.to_game_state_dto(session_obj)

@@ -1,5 +1,7 @@
 """Authoritative deterministic Game Engine for DetectiveAI."""
 
+import logging
+
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -24,6 +26,8 @@ from app.schemas.game_state import (
     SessionStatus,
 )
 from app.services.session_service import SessionService
+
+logger = logging.getLogger(__name__)
 
 
 class GameEngine:
@@ -58,6 +62,12 @@ class GameEngine:
             SessionStatus.SOLVED.value,
             SessionStatus.FAILED.value,
         ):
+            logger.warning(
+                "Session %s is already %s, rejecting action %s",
+                session_id,
+                session.status,
+                action.action_type.value,
+            )
             raise SessionAlreadyCompletedError(
                 f"Session '{session_id}' is already {session.status.upper()} "
                 "and cannot accept further investigation actions."
@@ -66,7 +76,21 @@ class GameEngine:
         meta = session.state_metadata or {}
         scenario_id = meta.get("scenario_id")
         if not scenario_id:
+            logger.error(
+                "Session metadata missing scenario_id for session_id=%s", session_id
+            )
             raise InvalidActionError("Session metadata missing scenario_id.")
+
+        logger.info(
+            "Executing action %s for session_id=%s scenario_id=%s "
+            "target=%s current_stage=%s current_location=%s",
+            action.action_type.value.upper(),
+            session_id,
+            scenario_id,
+            action.target_id,
+            meta.get("current_stage_id"),
+            session.current_location_id,
+        )
 
         scenario = self.loader.load(scenario_id)
 
@@ -109,6 +133,12 @@ class GameEngine:
 
         # Update state DTO in result
         result.state = self.session_service.to_game_state_dto(session)
+        logger.info(
+            "Action %s completed successfully for session_id=%s score=%d",
+            action.action_type.value.upper(),
+            session_id,
+            session.score,
+        )
         return result
 
     def _handle_move(
@@ -119,12 +149,22 @@ class GameEngine:
     ) -> ActionResultDTO:
         target_id = action.target_id
         if not target_id:
+            logger.warning(
+                "MOVE action failed: missing target_id for session_id=%s", session.id
+            )
             raise InvalidLocationError("MOVE action requires target_id (location ID).")
 
         location = next(
             (loc for loc in scenario.locations if loc.id == target_id), None
         )
         if not location:
+            logger.warning(
+                "MOVE action failed: location %s does not exist in scenario %s "
+                "for session_id=%s",
+                target_id,
+                scenario.scenario_id,
+                session.id,
+            )
             raise InvalidLocationError(
                 f"Location '{target_id}' does not exist in scenario "
                 f"'{scenario.scenario_id}'."
@@ -135,14 +175,29 @@ class GameEngine:
 
         # Check accessibility rule
         if not location.is_initial_unlocked and target_id not in visited:
+            logger.warning(
+                "Location %s (%s) is locked for session_id=%s",
+                location.name,
+                target_id,
+                session.id,
+            )
             raise LocationLockedError(
                 f"Location '{location.name}' ({target_id}) is locked."
             )
 
+        prev_loc_id = session.current_location_id
         session.current_location_id = target_id
         if target_id not in visited:
             visited.add(target_id)
             meta["visited_location_ids"] = sorted(visited)
+
+        logger.info(
+            "Player moved from %s to %s (%s) for session_id=%s",
+            prev_loc_id,
+            location.name,
+            target_id,
+            session.id,
+        )
 
         state_dto = self.session_service.to_game_state_dto(session)
         return ActionResultDTO(
@@ -160,6 +215,13 @@ class GameEngine:
     ) -> ActionResultDTO:
         current_loc_id = session.current_location_id
         if action.target_id and action.target_id != current_loc_id:
+            logger.warning(
+                "INSPECT action failed: cannot inspect %s while at %s "
+                "for session_id=%s",
+                action.target_id,
+                current_loc_id,
+                session.id,
+            )
             raise InvalidLocationError(
                 f"Cannot inspect location '{action.target_id}' while at "
                 f"location '{current_loc_id}'."
@@ -186,6 +248,15 @@ class GameEngine:
 
         meta["discovered_evidence_ids"] = sorted(discovered_set)
 
+        logger.info(
+            "Inspected location %s for session_id=%s "
+            "newly_discovered=%s already_known=%s",
+            current_loc_id,
+            session.id,
+            newly_discovered,
+            already_known,
+        )
+
         state_dto = self.session_service.to_game_state_dto(session)
         return ActionResultDTO(
             success=True,
@@ -207,12 +278,23 @@ class GameEngine:
     ) -> ActionResultDTO:
         target_id = action.target_id
         if not target_id:
+            logger.warning(
+                "INTERVIEW action failed: missing target_id for session_id=%s",
+                session.id,
+            )
             raise SuspectNotAvailableError(
                 "INTERVIEW action requires target_id (suspect ID)."
             )
 
         suspect = next((s for s in scenario.suspects if s.id == target_id), None)
         if not suspect:
+            logger.warning(
+                "INTERVIEW action failed: suspect %s not available in scenario %s "
+                "for session_id=%s",
+                target_id,
+                scenario.scenario_id,
+                session.id,
+            )
             raise SuspectNotAvailableError(
                 f"Suspect '{target_id}' is not available in scenario "
                 f"'{scenario.scenario_id}'."
@@ -225,6 +307,13 @@ class GameEngine:
             interviewed_set.add(target_id)
             meta["interviewed_suspect_ids"] = sorted(interviewed_set)
             session.score += 10  # Score reward for interviewing suspect
+
+        logger.info(
+            "Interviewed suspect %s (%s) for session_id=%s",
+            suspect.name,
+            target_id,
+            session.id,
+        )
 
         # Public interview summary (strictly omits is_culprit / motive)
         public_interview = {
@@ -253,6 +342,10 @@ class GameEngine:
     ) -> ActionResultDTO:
         target_id = action.target_id
         if not target_id:
+            logger.warning(
+                "EXAMINE_EVIDENCE action failed: missing target_id for session_id=%s",
+                session.id,
+            )
             raise EvidenceNotDiscoveredError(
                 "EXAMINE_EVIDENCE action requires target_id (evidence ID)."
             )
@@ -261,6 +354,11 @@ class GameEngine:
         discovered_set = set(meta.get("discovered_evidence_ids", []))
 
         if target_id not in discovered_set:
+            logger.warning(
+                "Cannot examine evidence %s for session_id=%s: not discovered yet",
+                target_id,
+                session.id,
+            )
             raise EvidenceNotDiscoveredError(
                 f"Cannot examine evidence '{target_id}': "
                 "it has not been discovered yet."
@@ -268,9 +366,21 @@ class GameEngine:
 
         evidence = next((ev for ev in scenario.evidence if ev.id == target_id), None)
         if not evidence:
+            logger.warning(
+                "Evidence %s does not exist in scenario for session_id=%s",
+                target_id,
+                session.id,
+            )
             raise EvidenceNotDiscoveredError(
                 f"Evidence '{target_id}' does not exist in scenario."
             )
+
+        logger.info(
+            "Examined evidence %s (%s) for session_id=%s",
+            evidence.name,
+            target_id,
+            session.id,
+        )
 
         public_evidence = {
             "evidence_id": evidence.id,
@@ -320,6 +430,15 @@ class GameEngine:
         missing_suss = [sus for sus in req_suss if sus not in interviewed_suss]
 
         if missing_evs or missing_locs or missing_suss:
+            logger.warning(
+                "Stage advancement requirements not met for session_id=%s "
+                "stage=%s missing_evs=%s missing_locs=%s missing_suss=%s",
+                session.id,
+                curr_stage.id,
+                missing_evs,
+                missing_locs,
+                missing_suss,
+            )
             raise StageRequirementsNotMetError(
                 f"Cannot advance from stage '{curr_stage.name}': requirements "
                 f"not satisfied. Missing evidence: {missing_evs}, missing "
@@ -337,6 +456,12 @@ class GameEngine:
         meta["completed_stage_ids"] = sorted(completed)
 
         if not next_stage:
+            logger.info(
+                "Session %s completed final stage %s (%d)",
+                session.id,
+                curr_stage.id,
+                curr_stage.order,
+            )
             state_dto = self.session_service.to_game_state_dto(session)
             return ActionResultDTO(
                 success=True,
@@ -347,6 +472,16 @@ class GameEngine:
 
         meta["current_stage_id"] = next_stage.id
         meta["current_stage_order"] = next_stage.order
+
+        logger.info(
+            "Session %s advanced from stage %s (order %d) to stage %s (order %d: '%s')",
+            session.id,
+            curr_stage.id,
+            curr_stage.order,
+            next_stage.id,
+            next_stage.order,
+            next_stage.name,
+        )
 
         state_dto = self.session_service.to_game_state_dto(session)
         return ActionResultDTO(
@@ -368,6 +503,10 @@ class GameEngine:
     ) -> ActionResultDTO:
         proposed_culprit_id = action.target_id
         if not proposed_culprit_id:
+            logger.warning(
+                "SUBMIT_SOLUTION action failed: missing target_id for session_id=%s",
+                session.id,
+            )
             raise InvalidSolutionError(
                 "SUBMIT_SOLUTION action requires target_id "
                 "(proposed culprit suspect ID)."
@@ -377,6 +516,12 @@ class GameEngine:
             (s for s in scenario.suspects if s.id == proposed_culprit_id), None
         )
         if not suspect:
+            logger.warning(
+                "SUBMIT_SOLUTION action failed: suspect %s does not exist in scenario "
+                "for session_id=%s",
+                proposed_culprit_id,
+                session.id,
+            )
             raise InvalidSolutionError(
                 f"Suspect '{proposed_culprit_id}' does not exist in scenario."
             )
@@ -388,9 +533,23 @@ class GameEngine:
             session.status = SessionStatus.SOLVED.value
             session.score += 50  # Score reward for solving case
             message = "Solution accepted! Case solved successfully."
+            logger.info(
+                "Solution accepted for session_id=%s proposed_culprit=%s "
+                "status=%s new_score=%d",
+                session.id,
+                proposed_culprit_id,
+                session.status,
+                session.score,
+            )
         else:
             # Remains IN_PROGRESS on incorrect submission
             message = "Solution incorrect. Investigation remains in progress."
+            logger.info(
+                "Solution incorrect for session_id=%s proposed_culprit=%s status=%s",
+                session.id,
+                proposed_culprit_id,
+                session.status,
+            )
 
         state_dto = self.session_service.to_game_state_dto(session)
         return ActionResultDTO(

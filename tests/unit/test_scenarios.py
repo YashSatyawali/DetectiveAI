@@ -42,6 +42,39 @@ def test_load_valid_fixture_scenario():
     assert scenario.solution.required_evidence_ids == ["evidence_01"]
 
 
+def test_load_midnight_archive_scenario():
+    """Verify that the_midnight_archive scenario loads and validates correctly."""
+    loader = ScenarioLoader(base_dir="scenarios")
+    scenario = loader.load("the_midnight_archive")
+
+    assert isinstance(scenario, ScenarioDefinition)
+    assert scenario.scenario_id == "the_midnight_archive"
+    assert scenario.name == "The Midnight Archive"
+    assert scenario.version == "1.0.0"
+
+    assert len(scenario.suspects) == 5
+    assert len(scenario.locations) == 6
+    assert len(scenario.evidence) == 8
+    assert len(scenario.timeline) == 6
+    assert len(scenario.stages) == 6
+
+    assert scenario.solution.culprit_id == "suspect_05"
+    assert scenario.solution.required_evidence_ids == [
+        "evidence_02",
+        "evidence_03",
+        "evidence_05",
+        "evidence_06",
+        "evidence_08",
+    ]
+
+    # Verify ground-truth isolation
+    player_view = scenario.to_player_view()
+    assert not hasattr(player_view, "solution")
+    assert not hasattr(player_view.suspects[0], "is_culprit")
+    # Secret timeline events (2 out of 6) should be hidden from player view
+    assert len(player_view.timeline) == 4
+
+
 def test_ground_truth_separation():
     """Verify player-facing public view excludes solution and ground-truth fields."""
     loader = ScenarioLoader(base_dir="scenarios")

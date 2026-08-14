@@ -1,5 +1,7 @@
 """Session and suspect-scoped conversation manager for AI interrogations."""
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,8 @@ from app.lamatic.schemas import AgentResponse
 from app.lamatic.suspect_agent import SuspectAgent
 from app.models.game_event import GameEvent
 from app.services.suspect_knowledge import SuspectKnowledge
+
+logger = logging.getLogger(__name__)
 
 
 class SuspectConversationManager:
@@ -49,6 +53,13 @@ class SuspectConversationManager:
     ) -> AgentResponse:
         """Send question to suspect agent, append turn to history, and record event."""
         history = self.get_conversation_history(session_id, knowledge.suspect_id, db=db)
+        logger.info(
+            "Suspect conversation turn started: session_id=%s "
+            "suspect_id=%s past_turns=%d",
+            session_id,
+            knowledge.suspect_id,
+            len(history),
+        )
 
         response = self.agent.ask(
             knowledge=knowledge,
@@ -69,5 +80,13 @@ class SuspectConversationManager:
         )
         db.add(dialogue_event)
         db.commit()
+
+        logger.info(
+            "Suspect conversation turn completed: session_id=%s "
+            "suspect_id=%s status=%s",
+            session_id,
+            knowledge.suspect_id,
+            response.status,
+        )
 
         return response

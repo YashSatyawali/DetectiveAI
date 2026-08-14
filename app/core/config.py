@@ -1,8 +1,27 @@
-"""Application core configuration."""
-
 import os
+from pathlib import Path
 
 from pydantic import BaseModel
+
+
+def _load_env_file(dotenv_path: str = ".env") -> None:
+    """Load key-value pairs from a .env file into os.environ if not already set."""
+    env_file = Path(dotenv_path)
+    if not env_file.is_file():
+        return
+    with env_file.open(encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, _, value = stripped.partition("=")
+            key = key.strip()
+            value = value.strip().strip("'\"")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+_load_env_file()
 
 
 class Settings(BaseModel):
@@ -13,6 +32,9 @@ class Settings(BaseModel):
     debug: bool = os.getenv("DEBUG", "True").lower() in ("true", "1", "t")
     api_v1_prefix: str = "/api/v1"
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./detective_ai.db")
+
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_file: str = os.getenv("LOG_FILE", "logs/detective_ai.log")
 
     # Lamatic AgentKit Settings
     lamatic_endpoint: str | None = os.getenv("LAMATIC_ENDPOINT")

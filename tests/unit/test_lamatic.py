@@ -6,6 +6,7 @@ import httpx
 from lamatic.types import LamaticResponse
 from typer.testing import CliRunner
 
+from app.core.config import settings
 from app.lamatic.agent import DetectiveAgent
 from app.lamatic.client import LamaticClient
 from app.lamatic.exceptions import (
@@ -19,8 +20,11 @@ from cli.app import app
 runner = CliRunner()
 
 
-def test_lamatic_missing_credentials_raises_configuration_error():
+def test_lamatic_missing_credentials_raises_configuration_error(monkeypatch):
     """Verify missing credentials raise LamaticConfigurationError."""
+    monkeypatch.setattr(settings, "lamatic_api_key", None)
+    monkeypatch.setattr(settings, "lamatic_endpoint", None)
+    monkeypatch.setattr(settings, "lamatic_project_id", None)
     client = LamaticClient(endpoint=None, project_id=None, api_key=None, flow_id=None)
     import pytest
 
@@ -30,8 +34,9 @@ def test_lamatic_missing_credentials_raises_configuration_error():
     assert "credentials are not configured" in str(exc_info.value)
 
 
-def test_lamatic_missing_flow_id_raises_configuration_error():
+def test_lamatic_missing_flow_id_raises_configuration_error(monkeypatch):
     """Verify missing flow_id raises LamaticConfigurationError."""
+    monkeypatch.setattr(settings, "lamatic_flow_id", None)
     client = LamaticClient(
         endpoint="https://example.com/api/graphql",
         project_id="proj_123",

@@ -1,11 +1,14 @@
 """Conversational suspect agent backed by Lamatic AgentKit."""
 
+import logging
 from typing import Any
 
 from app.core.config import settings
 from app.lamatic.client import LamaticClient
 from app.lamatic.schemas import AgentResponse
 from app.services.suspect_knowledge import SuspectKnowledge
+
+logger = logging.getLogger(__name__)
 
 
 class SuspectAgent:
@@ -38,13 +41,29 @@ class SuspectAgent:
         conversation_history: list[dict[str, str]] | None = None,
     ) -> AgentResponse:
         """Interact with suspect agent given knowledge and dialogue history."""
+        history = conversation_history or []
+        logger.info(
+            "SuspectAgent interrogation started: suspect_id=%s suspect_name=%s "
+            "flow_id=%s history_turns=%d",
+            knowledge.suspect_id,
+            knowledge.name,
+            self.flow_id,
+            len(history),
+        )
+
         payload: dict[str, Any] = {
             "message": message,
             "suspect_id": knowledge.suspect_id,
             "suspect_name": knowledge.name,
             "suspect_knowledge": knowledge.model_dump(),
-            "conversation_history": conversation_history or [],
+            "conversation_history": history,
             "system_instruction": self.SUSPECT_SYSTEM_INSTRUCTION,
         }
 
-        return self.client.execute(flow_id=self.flow_id, payload=payload)
+        response = self.client.execute(flow_id=self.flow_id, payload=payload)
+        logger.info(
+            "SuspectAgent interrogation completed: suspect_id=%s status=%s",
+            knowledge.suspect_id,
+            response.status,
+        )
+        return response

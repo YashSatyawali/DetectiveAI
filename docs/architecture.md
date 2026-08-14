@@ -431,5 +431,39 @@ Core Principles:
 * **Milestone 5B**: Investigation Context & AI Tool Boundary (`InvestigationContext`, `InvestigationTools`, explicit player-safe whitelisting, `GameEngine` delegation).
 * **Milestone 5C**: AI-Powered Suspect Interrogation (`SuspectKnowledge`, `SuspectKnowledgeBuilder`, `SuspectAgent`, `SuspectConversationManager`, CLI `interrogate` subshell).
 * **Milestone 5D**: AI-Powered Evidence Examination (`EvidenceKnowledge`, `EvidenceKnowledgeBuilder`, `EvidenceAgent`, `LAMATIC_EVIDENCE_FLOW_ID`, CLI `examine` AI analysis).
-* **Milestone 6 (Current)**: AI Case Resolution & Reasoning Evaluation (`SolutionSubmission`, `SolutionEvaluation`, `SolutionEvaluator`, `SolutionEvaluationService`, `LAMATIC_SOLUTION_FLOW_ID`, CLI `solve` interactive command).
+* **Milestone 6**: AI Case Resolution & Reasoning Evaluation (`SolutionSubmission`, `SolutionEvaluation`, `SolutionEvaluator`, `SolutionEvaluationService`, `LAMATIC_SOLUTION_FLOW_ID`, CLI `solve` interactive command).
+* **Milestone 7 (Current)**: Production-Quality Application Logging System (`app/core/logging.py`, `RotatingFileHandler`, execution metrics, audit trail, security & secret redaction).
+
+---
+
+## 21. Application Logging Architecture
+
+DetectiveAI implements a standardized, production-quality logging framework built on Python's built-in `logging` module:
+
 ```
+FastAPI Server Startup / Typer CLI Execution
+                  │
+                  ▼
+       configure_logging() (app/core/logging.py)
+       ┌──────────┴──────────┐
+       ▼                     ▼
+  StreamHandler      RotatingFileHandler
+ (sys.stdout console) (logs/detective_ai.log)
+                      • 10 MB maxBytes
+                      • 5 backupCount
+                      • UTF-8 encoding
+                      • Format: %(asctime)s | %(levelname)s | %(name)s |
+                                %(filename)s:%(lineno)d | %(funcName)s | %(message)s
+```
+
+### Logging Principles & Design Constraints
+1. **Centralized Configuration**: `configure_logging()` in `app/core/logging.py` serves as the single source of truth for logging configuration. It is idempotent and prevents duplicate log emission.
+2. **Metadata-Rich Formatter**: Uses standard log record attributes `%(asctime)s`, `%(levelname)s`, `%(name)s`, `%(filename)s:%(lineno)d`, `%(funcName)s`, and `%(message)s` for traceability.
+3. **Log Rotation**: Implemented via `RotatingFileHandler` with 10 MB maximum file size and 5 rotating backups to avoid unbounded disk growth.
+4. **Latency & Observability**:
+   - `LamaticClient` records execution duration (`duration_ms = (time.perf_counter() - start_time) * 1000`) for all AI workflow invocations.
+   - `GameEngine` records all player action transitions, stage advancement criteria checks, and validation failures.
+5. **Confidentiality & Secret Isolation**:
+   - Secrets, API keys (`LAMATIC_API_KEY`), and Bearer tokens are never logged.
+   - Ground truth fields (`solution.culprit_id`, `is_culprit`, secret events) are excluded from logs.
+

@@ -1,6 +1,7 @@
 """Adapter wrapper over official Lamatic Python SDK client."""
 
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -66,33 +67,66 @@ class LamaticClient:
         sdk = self._get_sdk_client()
         target_flow_id = flow_id or self.flow_id
         if not target_flow_id:
+            logger.warning("Lamatic execution aborted: flow_id is not configured")
             raise LamaticConfigurationError(
                 "Lamatic flow_id is not configured. Please set LAMATIC_FLOW_ID."
             )
         exec_payload = payload or {}
+
+        logger.info("Invoking Lamatic flow flow_id=%s", target_flow_id)
+        start_time = time.perf_counter()
 
         try:
             sdk_response = sdk.execute_flow(
                 flow_id=target_flow_id, payload=exec_payload
             )
         except (httpx.HTTPError, TimeoutError, ConnectionError) as err:
-            logger.error("Lamatic SDK request connection failed: %s", err)
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(
+                "Lamatic SDK request connection failed flow_id=%s duration_ms=%.2f: %s",
+                target_flow_id,
+                duration_ms,
+                err,
+            )
             raise LamaticConnectionError(
                 f"Unable to connect to Lamatic AgentKit service: {err}"
             ) from err
         except Exception as err:
+            duration_ms = (time.perf_counter() - start_time) * 1000
             if isinstance(err, (LamaticConfigurationError, LamaticConnectionError)):
                 raise
-            logger.error("Lamatic SDK request failed: %s", err)
+            logger.error(
+                "Lamatic SDK request failed flow_id=%s duration_ms=%.2f: %s",
+                target_flow_id,
+                duration_ms,
+                err,
+            )
             raise LamaticInvocationError(
                 f"Unable to invoke the Detective AI agent: {err}"
             ) from err
 
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
         if sdk_response.status in ("error", "failed"):
             err_msg = sdk_response.message or "Unknown execution failure"
+            logger.warning(
+                "Lamatic invocation failed flow_id=%s duration_ms=%.2f "
+                "status=%s message=%s",
+                target_flow_id,
+                duration_ms,
+                sdk_response.status,
+                err_msg,
+            )
             raise LamaticInvocationError(
                 f"Lamatic AgentKit invocation failed: {err_msg}"
             )
+
+        logger.info(
+            "Lamatic flow completed successfully flow_id=%s duration_ms=%.2f status=%s",
+            target_flow_id,
+            duration_ms,
+            sdk_response.status,
+        )
 
         result_data = sdk_response.result or {}
         content = _extract_content_from_result(result_data)

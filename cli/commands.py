@@ -1,5 +1,6 @@
 """CLI command handlers linking terminal commands to application services."""
 
+import logging
 import sys
 from typing import Any
 
@@ -38,25 +39,35 @@ from cli.formatting import (
     format_scenarios_list,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def scenarios_cmd() -> None:
     """List all available investigation scenarios."""
+    logger.info("CLI scenarios command invoked")
     try:
         registry = ScenarioRegistry()
         scenarios = registry.list_scenarios()
         print(format_scenarios_list(scenarios))
     except Exception as err:
+        logger.exception("Failed to list scenarios in CLI: %s", err)
         print(format_error(f"Failed to list scenarios: {err}"))
         sys.exit(1)
 
 
 def start_cmd(scenario_id: str) -> str:
     """Start a new game session for a scenario."""
+    logger.info("CLI start requested: scenario_id=%s", scenario_id)
     init_db()
     db = SessionLocal()
     try:
         service = SessionService()
         state = service.start_game(scenario_id, db=db)
+        logger.info(
+            "CLI session started: session_id=%s scenario_id=%s",
+            state.session_id,
+            scenario_id,
+        )
         print("Game Session Started Successfully!\n")
         print(format_game_state(state))
         print(
@@ -65,6 +76,7 @@ def start_cmd(scenario_id: str) -> str:
         )
         return state.session_id
     except (ScenarioError, GameEngineError) as err:
+        logger.warning("CLI start failed for scenario_id=%s: %s", scenario_id, err)
         print(format_error(str(err)))
         sys.exit(1)
     finally:
@@ -73,6 +85,7 @@ def start_cmd(scenario_id: str) -> str:
 
 def state_cmd(session_id: str) -> None:
     """View player-facing current game state for a session."""
+    logger.info("CLI state requested: session_id=%s", session_id)
     init_db()
     db = SessionLocal()
     try:
@@ -81,6 +94,7 @@ def state_cmd(session_id: str) -> None:
         state = service.to_game_state_dto(session_obj)
         print(format_game_state(state))
     except GameEngineError as err:
+        logger.warning("CLI state failed for session_id=%s: %s", session_id, err)
         print(format_error(str(err)))
         sys.exit(1)
     finally:
@@ -89,6 +103,12 @@ def state_cmd(session_id: str) -> None:
 
 def action_cmd(session_id: str, action: str, target_id: str | None = None) -> None:
     """Execute a game action on an active investigation session."""
+    logger.info(
+        "CLI action requested: session_id=%s action=%s target_id=%s",
+        session_id,
+        action,
+        target_id,
+    )
     init_db()
     db = SessionLocal()
     try:
@@ -108,6 +128,9 @@ def action_cmd(session_id: str, action: str, target_id: str | None = None) -> No
 
         action_type = mapping.get(action_clean)
         if not action_type:
+            logger.warning(
+                "CLI unknown action '%s' for session_id=%s", action, session_id
+            )
             print(
                 format_error(
                     f"Unknown action '{action}'. Supported actions: move, inspect, "
@@ -121,6 +144,9 @@ def action_cmd(session_id: str, action: str, target_id: str | None = None) -> No
         result = engine.execute_action(session_id, action_dto, db=db)
         print(format_action_result(result))
     except GameEngineError as err:
+        logger.warning(
+            "CLI action failed for session_id=%s action=%s: %s", session_id, action, err
+        )
         print(format_error(str(err)))
         sys.exit(1)
     finally:
@@ -129,6 +155,7 @@ def action_cmd(session_id: str, action: str, target_id: str | None = None) -> No
 
 def history_cmd(session_id: str) -> None:
     """View chronological audit log of game events for a session."""
+    logger.info("CLI history requested: session_id=%s", session_id)
     init_db()
     db = SessionLocal()
     try:
@@ -143,6 +170,7 @@ def history_cmd(session_id: str) -> None:
         ).all()
         print(format_history(list(events)))
     except GameEngineError as err:
+        logger.warning("CLI history failed for session_id=%s: %s", session_id, err)
         print(format_error(str(err)))
         sys.exit(1)
     finally:
@@ -151,6 +179,7 @@ def history_cmd(session_id: str) -> None:
 
 def play_cmd(session_id: str, input_fn: Any = input) -> None:
     """Enter interactive REPL investigation mode for a game session."""
+    logger.info("CLI play requested: session_id=%s", session_id)
     init_db()
     db = SessionLocal()
     try:
@@ -213,6 +242,9 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
                     print("\nDetective AI (Lamatic Agent):")
                     print(res.content)
                 except (LamaticError, GameEngineError) as err:
+                    logger.warning(
+                        "Interactive ask error for session_id=%s: %s", session_id, err
+                    )
                     print(f"[Lamatic Error]\n{err}")
                 continue
 
@@ -263,6 +295,12 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
                         f"{status_upper}"
                     )
             except (GameEngineError, ScenarioError) as err:
+                logger.warning(
+                    "Interactive action %s failed for session_id=%s: %s",
+                    cmd,
+                    session_id,
+                    err,
+                )
                 print(format_error(str(err)))
 
     finally:
@@ -271,6 +309,9 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
 
 def ask_cmd(message: str, session_id: str | None = None) -> None:
     """Send a question to the Lamatic agent, optionally with session context."""
+    logger.info(
+        "CLI ask requested: session_id=%s message_len=%d", session_id, len(message)
+    )
     init_db()
     db = SessionLocal()
     try:
@@ -284,6 +325,7 @@ def ask_cmd(message: str, session_id: str | None = None) -> None:
         print("\nDetective AI (Lamatic Agent):")
         print(response.content)
     except (LamaticError, GameEngineError) as err:
+        logger.warning("CLI ask failed for session_id=%s: %s", session_id, err)
         print(f"[Lamatic Error]\n{err}")
         sys.exit(1)
     finally:
@@ -297,6 +339,9 @@ def interrogate_cmd(
     db: Any | None = None,
 ) -> None:
     """Start interactive AI interrogation with a suspect via GameEngine and Agent."""
+    logger.info(
+        "CLI interrogate requested: session_id=%s suspect_id=%s", session_id, suspect_id
+    )
     init_db()
     close_db = False
     if db is None:
@@ -357,9 +402,21 @@ def interrogate_cmd(
                 print(f"\n{knowledge.name}:")
                 print(f"{response.content}\n")
             except LamaticError as err:
+                logger.warning(
+                    "Interrogation turn error for suspect_id=%s session_id=%s: %s",
+                    suspect_id,
+                    session_id,
+                    err,
+                )
                 print(f"[Lamatic Error]\n{err}\n")
 
     except (GameEngineError, ScenarioError, SuspectNotAvailableError) as err:
+        logger.warning(
+            "CLI interrogate failed for suspect_id=%s session_id=%s: %s",
+            suspect_id,
+            session_id,
+            err,
+        )
         print(format_error(str(err)))
         if input_fn == input:
             sys.exit(1)
@@ -371,6 +428,9 @@ def interrogate_cmd(
 
 def examine_cmd(session_id: str, evidence_id: str, db: Any | None = None) -> None:
     """Examine evidence via GameEngine and provide AI forensic analysis."""
+    logger.info(
+        "CLI examine requested: session_id=%s evidence_id=%s", session_id, evidence_id
+    )
     init_db()
     close_db = False
     if db is None:
@@ -410,6 +470,12 @@ def examine_cmd(session_id: str, evidence_id: str, db: Any | None = None) -> Non
             print(response.content)
             print("=" * 70 + "\n")
         except LamaticError as err:
+            logger.warning(
+                "AI forensic examine error for evidence_id=%s session_id=%s: %s",
+                evidence_id,
+                session_id,
+                err,
+            )
             print(f"\n[Lamatic Error]\n{err}\n")
 
     except (
@@ -418,6 +484,12 @@ def examine_cmd(session_id: str, evidence_id: str, db: Any | None = None) -> Non
         EvidenceNotDiscoveredError,
         EvidenceNotFoundError,
     ) as err:
+        logger.warning(
+            "CLI examine failed for evidence_id=%s session_id=%s: %s",
+            evidence_id,
+            session_id,
+            err,
+        )
         print(format_error(str(err)))
         if close_db:
             sys.exit(1)
@@ -434,6 +506,9 @@ def solve_cmd(
     db: Any | None = None,
 ) -> None:
     """Submit case solution theory for evaluation and resolution."""
+    logger.info(
+        "CLI solve requested: session_id=%s target_id=%s", session_id, target_id
+    )
     init_db()
     close_db = False
     if db is None:
@@ -448,6 +523,11 @@ def solve_cmd(
             SessionStatus.SOLVED.value,
             SessionStatus.FAILED.value,
         ):
+            logger.warning(
+                "CLI solve rejected: session %s already completed (%s)",
+                session_id,
+                session_obj.status,
+            )
             raise SessionAlreadyCompletedError(
                 f"Cannot submit solution: session '{session_id}' is already completed."
             )
@@ -477,6 +557,9 @@ def solve_cmd(
         confirm = input_fn("Submit case? [y/N]: ").strip().lower()
 
         if confirm not in ("y", "yes"):
+            logger.info(
+                "CLI solve submission cancelled by user for session_id=%s", session_id
+            )
             print("Submission cancelled.\n")
             return
 
@@ -536,6 +619,7 @@ def solve_cmd(
         InvalidSolutionError,
         SessionAlreadyCompletedError,
     ) as err:
+        logger.warning("CLI solve failed for session_id=%s: %s", session_id, err)
         print(format_error(str(err)))
         if input_fn == input:
             sys.exit(1)

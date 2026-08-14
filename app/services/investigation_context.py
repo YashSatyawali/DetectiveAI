@@ -1,5 +1,6 @@
 """Player-safe investigation context models and context builder."""
 
+import logging
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.models.game_event import GameEvent
 from app.scenarios.loader import ScenarioLoader
 from app.services.session_service import SessionService
+
+logger = logging.getLogger(__name__)
 
 
 class InvestigationContext(BaseModel):

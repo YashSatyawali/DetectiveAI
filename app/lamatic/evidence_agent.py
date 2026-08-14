@@ -1,5 +1,6 @@
 """AI forensic interpretation agent service backed by Lamatic AgentKit."""
 
+import logging
 from typing import Any
 
 from app.core.config import settings
@@ -7,6 +8,8 @@ from app.lamatic.client import LamaticClient
 from app.lamatic.evidence_knowledge import EvidenceKnowledge
 from app.lamatic.schemas import AgentResponse
 from app.services.investigation_context import InvestigationContext
+
+logger = logging.getLogger(__name__)
 
 
 class EvidenceAgent:
@@ -39,6 +42,15 @@ class EvidenceAgent:
         context: InvestigationContext | None = None,
     ) -> AgentResponse:
         """Perform AI forensic interpretation of an evidence item."""
+        logger.info(
+            "EvidenceAgent examination started: evidence_id=%s evidence_name=%s "
+            "flow_id=%s has_context=%s",
+            knowledge.evidence_id,
+            knowledge.name,
+            self.flow_id,
+            context is not None,
+        )
+
         payload: dict[str, Any] = {
             "message": message or f"Analyze evidence: {knowledge.name}",
             "evidence_id": knowledge.evidence_id,
@@ -49,4 +61,10 @@ class EvidenceAgent:
         if context:
             payload["investigation_context"] = context.model_dump()
 
-        return self.client.execute(flow_id=self.flow_id, payload=payload)
+        response = self.client.execute(flow_id=self.flow_id, payload=payload)
+        logger.info(
+            "EvidenceAgent examination completed: evidence_id=%s status=%s",
+            knowledge.evidence_id,
+            response.status,
+        )
+        return response

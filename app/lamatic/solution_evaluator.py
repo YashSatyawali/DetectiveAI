@@ -1,6 +1,7 @@
 """SolutionEvaluator service for evaluating player solution reasoning using Lamatic."""
 
 import json
+import logging
 from typing import Any
 
 from app.core.config import settings
@@ -9,6 +10,8 @@ from app.lamatic.schemas import AgentResponse
 from app.scenarios.schemas import PublicScenarioDefinition
 from app.schemas.solution_evaluation import SolutionEvaluation, SolutionSubmission
 from app.services.investigation_context import InvestigationContext
+
+logger = logging.getLogger(__name__)
 
 
 class SolutionEvaluator:
@@ -43,6 +46,15 @@ class SolutionEvaluator:
         context: InvestigationContext | None = None,
     ) -> SolutionEvaluation:
         """Evaluate player solution submission using Lamatic AI flow."""
+        logger.info(
+            "SolutionEvaluator evaluation started: session_id=%s scenario_name=%s "
+            "flow_id=%s objective_correct=%s",
+            submission.session_id,
+            player_scenario.name,
+            self.flow_id,
+            objective_culprit_correct,
+        )
+
         # Construct explicit player-safe payload (strictly NO ground truth)
         payload: dict[str, Any] = {
             "submission": submission.model_dump(),
@@ -86,9 +98,20 @@ class SolutionEvaluator:
         )
 
         raw_json = self._parse_response_content(response.content)
-        return SolutionEvaluation.from_raw_dict(
+        evaluation = SolutionEvaluation.from_raw_dict(
             raw_json, culprit_correct=objective_culprit_correct
         )
+        logger.info(
+            "SolutionEvaluator evaluation completed: session_id=%s overall_score=%d "
+            "evidence_score=%d motive_score=%d reasoning_score=%d timeline_score=%d",
+            submission.session_id,
+            evaluation.overall_score,
+            evaluation.evidence_score,
+            evaluation.motive_score,
+            evaluation.reasoning_score,
+            evaluation.timeline_score,
+        )
+        return evaluation
 
     @staticmethod
     def _parse_response_content(content: str) -> dict[str, Any]:
