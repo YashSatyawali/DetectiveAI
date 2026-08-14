@@ -7,9 +7,12 @@ import typer
 from cli.commands import (
     action_cmd,
     ask_cmd,
+    examine_cmd,
     history_cmd,
+    interrogate_cmd,
     play_cmd,
     scenarios_cmd,
+    solve_cmd,
     start_cmd,
     state_cmd,
 )
@@ -86,9 +89,51 @@ def ask_agent(
     message: Annotated[
         str, typer.Argument(help="Message or question to send to the Lamatic agent")
     ],
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session-id",
+            "-s",
+            help="Optional active session ID for investigation context",
+        ),
+    ] = None,
 ) -> None:
-    """Send a question or message to the prototype Lamatic agent."""
-    ask_cmd(message)
+    """Send a question or message to the Lamatic agent with optional session context."""
+    ask_cmd(message, session_id=session_id)
+
+
+@app.command("interrogate")
+def interrogate_suspect(
+    session_id: Annotated[
+        str, typer.Argument(help="Session ID of the active investigation")
+    ],
+    suspect_id: Annotated[str, typer.Argument(help="ID of the suspect to interrogate")],
+) -> None:
+    """Start interactive AI interrogation subshell with a suspect."""
+    interrogate_cmd(session_id, suspect_id)
+
+
+@app.command("examine")
+def examine_evidence_ai(
+    session_id: Annotated[
+        str, typer.Argument(help="Session ID of the active investigation")
+    ],
+    evidence_id: Annotated[
+        str, typer.Argument(help="ID of the evidence item to examine")
+    ],
+) -> None:
+    """Perform GameEngine examination and AI forensic analysis on an evidence item."""
+    examine_cmd(session_id, evidence_id)
+
+
+@app.command("solve")
+def solve_case(
+    session_id: Annotated[
+        str, typer.Argument(help="Session ID of the active investigation")
+    ],
+) -> None:
+    """Submit final case solution theory and receive evaluation."""
+    solve_cmd(session_id)
 
 
 if __name__ == "__main__":

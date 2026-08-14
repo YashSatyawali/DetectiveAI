@@ -4,14 +4,16 @@ from typing import Any
 
 from app.lamatic.client import LamaticClient
 from app.lamatic.schemas import AgentRequest, AgentResponse
+from app.services.investigation_context import InvestigationContext
 
 
 class DetectiveAgent:
-    """Minimal prototype detective assistant agent service using Lamatic AgentKit."""
+    """Detective assistant agent service using Lamatic AgentKit."""
 
     DEFAULT_INSTRUCTION = (
         "You are a detective assistant participating in an investigation game. "
-        "For this prototype, answer the user's question clearly and concisely."
+        "Analyze the provided player investigation context and answer the user's "
+        "question clearly and concisely based strictly on player-visible facts."
     )
 
     def __init__(self, client: LamaticClient | None = None) -> None:
@@ -20,16 +22,22 @@ class DetectiveAgent:
     def ask(
         self,
         message: str,
-        context: dict[str, Any] | None = None,
+        context: InvestigationContext | dict[str, Any] | None = None,
     ) -> AgentResponse:
-        """Invoke the detective assistant agent with a message."""
-        request = AgentRequest(message=message, context=context)
+        """Invoke detective assistant agent with investigation context."""
+        ctx_dict: dict[str, Any] | None = None
+        if isinstance(context, InvestigationContext):
+            ctx_dict = context.model_dump()
+        elif isinstance(context, dict):
+            ctx_dict = context
 
-        payload = {
+        request = AgentRequest(message=message, context=ctx_dict)
+
+        payload: dict[str, Any] = {
             "message": request.message,
             "system_instruction": self.DEFAULT_INSTRUCTION,
         }
         if request.context:
-            payload["context"] = request.context
+            payload["investigation_context"] = request.context
 
         return self.client.execute(payload=payload)

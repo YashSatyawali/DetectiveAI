@@ -43,6 +43,12 @@ class EvidenceNotDiscoveredError(GameEngineError):
     pass
 
 
+class EvidenceNotFoundError(GameEngineError):
+    """Raised when requesting an evidence item that does not exist in scenario."""
+
+    pass
+
+
 class SuspectNotAvailableError(GameEngineError):
     """Raised when interviewing a suspect who is invalid or unavailable."""
 

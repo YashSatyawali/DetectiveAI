@@ -139,10 +139,41 @@ def test_detective_agent_ask():
     assert "detective assistant" in called_payload["system_instruction"]
 
 
+def test_detective_agent_ask_with_investigation_context(db_session):
+    """Verify DetectiveAgent accepts InvestigationContext and passes player payload."""
+    from app.db.database import init_db
+    from app.services.investigation_context import InvestigationContextBuilder
+    from app.services.session_service import SessionService
+
+    init_db()
+    session_service = SessionService()
+    builder = InvestigationContextBuilder(session_service=session_service)
+    state = session_service.start_game("test_case", db=db_session)
+    ctx = builder.build_context(state.session_id, db=db_session)
+
+    mock_client = MagicMock()
+    mock_client.execute.return_value = AgentResponse(
+        content="Focus on examining the crime scene.",
+        status="success",
+    )
+
+    agent = DetectiveAgent(client=mock_client)
+    res = agent.ask("What should I do next?", context=ctx)
+
+    assert res.content == "Focus on examining the crime scene."
+    mock_client.execute.assert_called_once()
+    called_payload = mock_client.execute.call_args[1]["payload"]
+    assert "investigation_context" in called_payload
+    inv_ctx = called_payload["investigation_context"]
+    assert inv_ctx["session_id"] == state.session_id
+    assert inv_ctx["scenario_id"] == "test_case"
+    assert "culprit_id" not in str(inv_ctx)
+
+
 def test_cli_ask_command_success(monkeypatch):
     """Verify CLI ask command executes successfully with mocked agent response."""
 
-    def mock_ask(self, message: str):
+    def mock_ask(self, message: str, context=None):
         return AgentResponse(
             content="Observation and deduction are fundamental.",
             status="success",
@@ -159,7 +190,7 @@ def test_cli_ask_command_success(monkeypatch):
 def test_cli_ask_command_error_handling(monkeypatch):
     """Verify CLI ask command formats Lamatic errors cleanly without raw tracebacks."""
 
-    def mock_ask_error(self, message: str):
+    def mock_ask_error(self, message: str, context=None):
         raise LamaticConfigurationError(
             "Lamatic credentials are not configured. Please set LAMATIC_API_KEY."
         )

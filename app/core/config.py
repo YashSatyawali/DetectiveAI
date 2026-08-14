@@ -19,6 +19,9 @@ class Settings(BaseModel):
     lamatic_project_id: str | None = os.getenv("LAMATIC_PROJECT_ID")
     lamatic_api_key: str | None = os.getenv("LAMATIC_API_KEY")
     lamatic_flow_id: str | None = os.getenv("LAMATIC_FLOW_ID")
+    lamatic_suspect_flow_id: str | None = os.getenv("LAMATIC_SUSPECT_FLOW_ID")
+    lamatic_evidence_flow_id: str | None = os.getenv("LAMATIC_EVIDENCE_FLOW_ID")
+    lamatic_solution_flow_id: str | None = os.getenv("LAMATIC_SOLUTION_FLOW_ID")
 
 
 settings = Settings()

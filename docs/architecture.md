@@ -237,7 +237,30 @@ Key rules enforcing this principle:
 
 ---
 
-## 14. High-Level Investigation Flow
+## 15. AI Tool Boundary & Investigation Context Architecture
+
+The AI layer interacts with DetectiveAI through an explicit, player-safe boundary:
+
+```
+Lamatic Agent (DetectiveAgent)
+      ↓
+InvestigationContext (Player-Safe Whitelisted State)
+      ↓
+InvestigationTools (Application Tool Boundary)
+      ↓
+GameEngine (Authoritative Validation & Rule Engine)
+      ↓
+Database Layer (SQLAlchemy / SQLite)
+```
+
+Core Principles:
+* **The AI is an investigator, not the game engine**: The AI reasons over permitted information (`InvestigationContext`) and requests actions through tools (`InvestigationTools`). The deterministic `GameEngine` validates and executes all state changes.
+* **No Direct DB or Ground Truth Access**: `DetectiveAgent` never receives ORM models (`GameSession`, `Case`, `Suspect`), `ScenarioDefinition` ground truth, `culprit_id`, `motive`, or `solution.json`.
+* **Action Tools Delegate to Engine**: All action tools (`move_to_location`, `inspect_location`, `interview_suspect`, `examine_evidence`, `advance_stage`) delegate directly to `GameEngine.execute_action()`.
+
+---
+
+## 16. High-Level Investigation Flow
 
 When a player performs an action during investigation, the control flow proceeds as follows:
 
@@ -282,13 +305,131 @@ Future milestones will introduce specialized Lamatic agents, each with a tightly
 
 ---
 
-## 16. Development Phases
+## 17. AI-Powered Suspect Interrogation Architecture
+
+The conversational suspect interrogation flow proceeds as follows:
+
+```
+                  Player
+                    │
+                    ▼
+                GameEngine
+                    │
+            interview valid?
+                    │
+                    ▼
+            SuspectKnowledge
+                    │
+                    ▼
+              SuspectAgent
+                    │
+                    ▼
+               Lamatic Flow
+                    │
+                    ▼
+             Suspect Response
+                    │
+                    ▼
+                  Player
+```
+
+Core Principles:
+* **Separation of Reality vs Conversation**: "The GameEngine determines whether an interrogation is valid. The SuspectAgent determines how the suspect responds."
+* **Ground-Truth Confidentiality**: `SuspectKnowledge` is built from public scenario definitions by `SuspectKnowledgeBuilder`. Ground-truth fields (`is_culprit`, `culprit_id`, `motive`, secret timeline events) are strictly stripped.
+* **Persistent Dialogue History**: Multi-turn dialogue exchanges are saved into `GameEvent` (`event_type="INTERVIEW_DIALOGUE"`, `target_type="suspect"`) preserving turn history per suspect without modifying database schemas.
+
+---
+
+## 18. AI-Powered Evidence Examination Architecture
+
+The AI forensic evidence examination flow proceeds as follows:
+
+```
+                  Player
+                    │
+                    ▼
+                GameEngine
+                    │
+            evidence discovered?
+                    │
+                    ▼
+            EvidenceKnowledge
+                    │
+                    ▼
+              EvidenceAgent
+                    │
+                    ▼
+          Lamatic Evidence Flow
+                    │
+                    ▼
+          AI Forensic Analysis
+                    │
+                    ▼
+                  Player
+```
+
+Core Principles:
+* **Untrusted Reasoning Worker**: The `EvidenceAgent` generates physical observations, forensic interpretations, and follow-up avenues. The deterministic `GameEngine` remains the sole authority over evidence existence, discovery, and state transitions.
+* **Ground-Truth Confidentiality**: `EvidenceKnowledge` is built by `EvidenceKnowledgeBuilder` from `PublicScenarioDefinition`, excluding ground-truth solutions (`solution_summary`, `culprit_id`, `is_culprit`, `motive`) and secret discovery metadata.
+* **Offline Game Engine Fallback**: If Lamatic credentials are unset or unreachable, `GameEngine` completes deterministic evidence examination gracefully without breaking gameplay.
+
+---
+
+## 19. AI Case Resolution & Reasoning Evaluation Architecture
+
+The final case solution submission and evaluation flow proceeds as follows:
+
+```
+                  Player
+                    │
+                    ▼
+        SolutionSubmission DTO
+                    │
+                    ▼
+        SolutionEvaluationService
+         ┌──────────┴──────────┐
+         ▼                     ▼
+    GameEngine         SolutionEvaluator
+    (Objective)           (Subjective)
+   • Culprit ID?        • Evidence score (20%)
+   • Evidence IDs?      • Motive score (15%)
+   • Culprit correct?   • Reasoning score (20%)
+     (+30 pts)          • Timeline score (15%)
+         │                     │
+         └──────────┬──────────┘
+                    ▼
+           SolutionEvaluation
+             (Total 100 pts)
+                    │
+                    ▼
+           Session Status Update
+             (SOLVED / FAILED)
+```
+
+Scoring Mechanism:
+* **Culprit Correctness (30%)**: Authoritative objective check performed by `GameEngine` / `SolutionEvaluationService` comparing accused culprit ID against ground-truth culprit ID.
+* **Evidence Relevance & Support (20%)**: Subjective AI evaluation of supporting evidence items cited by player.
+* **Motive Reasoning (15%)**: Subjective AI evaluation of player's motive explanation.
+* **Reasoning Quality & Logic (20%)**: Subjective AI evaluation of logical connection between evidence and culprit.
+* **Timeline Reconstruction (15%)**: Subjective AI evaluation of crime timeline sequence explanation.
+
+Core Principles:
+* **Hybrid Objective + Subjective Model**: `GameEngine` determines objective culprit correctness, session completion, and state transitions. `SolutionEvaluator` provides subjective reasoning quality evaluation.
+* **Ground-Truth Protection**: Neither the player nor `SolutionEvaluator` receives secret scenario ground truth (`solution_summary`, `culprit_id`, `motive`, secret timeline events). The evaluator reviews player reasoning solely against established public facts.
+* **Deterministic Fallback**: If Lamatic credentials are unavailable, `SolutionEvaluationService` applies deterministic scoring rules without crashing.
+
+---
+
+## 20. Development Phases
 
 * **Milestone 0**: Project foundation, modern `pyproject.toml` setup, FastAPI app skeleton, `/health` endpoint, pytest harness, Ruff configuration, architecture documentation.
 * **Milestone 1**: Core Domain Models & Database Schema (Case, Suspect, Location, Evidence, GameState) using SQLAlchemy & Pydantic.
 * **Milestone 2**: Scenario Definition, Loader, Integrity Validator, Discovery Registry, and Ground-Truth Isolation.
 * **Milestone 3**: Game State and Investigation Lifecycle (Deterministic Game Engine, Session Service, Action Validation, Audit Log).
 * **Milestone 4**: CLI Investigation Interface (Typer CLI, Interactive REPL, Command Mapping, Confidentiality Formatting).
-* **Milestone 5A (Current)**: Lamatic AgentKit Integration Spike (Official SDK Adapter, Connectivity Prototype, Configuration, Testing Harness).
-* **Milestone 5B**: Game-State Aware AI Agents (Suspect Agent, Evidence Agent, Solution Evaluator).
-* **Milestone 6**: Scenario Expansion, Advanced Contradiction Detection, Polish & Tuning.
+* **Milestone 5A**: Lamatic AgentKit Integration Spike (Official SDK Adapter, Connectivity Prototype, Configuration, Testing Harness).
+* **Milestone 5B**: Investigation Context & AI Tool Boundary (`InvestigationContext`, `InvestigationTools`, explicit player-safe whitelisting, `GameEngine` delegation).
+* **Milestone 5C**: AI-Powered Suspect Interrogation (`SuspectKnowledge`, `SuspectKnowledgeBuilder`, `SuspectAgent`, `SuspectConversationManager`, CLI `interrogate` subshell).
+* **Milestone 5D**: AI-Powered Evidence Examination (`EvidenceKnowledge`, `EvidenceKnowledgeBuilder`, `EvidenceAgent`, `LAMATIC_EVIDENCE_FLOW_ID`, CLI `examine` AI analysis).
+* **Milestone 6 (Current)**: AI Case Resolution & Reasoning Evaluation (`SolutionSubmission`, `SolutionEvaluation`, `SolutionEvaluator`, `SolutionEvaluationService`, `LAMATIC_SOLUTION_FLOW_ID`, CLI `solve` interactive command).
+```

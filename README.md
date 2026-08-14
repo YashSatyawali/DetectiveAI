@@ -110,13 +110,26 @@ LAMATIC_FLOW_ID=your-flow-id
 
 ### Running the Test Command
 
-Test the prototype Lamatic agent directly from the CLI:
+Test the context-aware Lamatic agent directly from the CLI:
 
 ```bash
+# Standalone prompt
 python -m cli ask "What makes a good detective?"
+
+# Context-aware prompt using active investigation session context
+python -m cli ask "What should I investigate next?" --session-id <session_id>
+
+# AI-Powered Suspect Interrogation subshell
+python -m cli interrogate <session_id> <suspect_id>
+
+# AI-Powered Evidence Forensic Analysis
+python -m cli examine <session_id> <evidence_id>
+
+# AI Case Resolution & Reasoning Evaluation
+python -m cli solve <session_id>
 ```
 
-> **Note**: The current agent integration is a connectivity and architecture prototype (Milestone 5A). It operates strictly outside the deterministic GameEngine and has no access to active game sessions, database states, or scenario ground truth.
+> **Note**: Case resolution evaluates objective culprit correctness (30%) via `GameEngine` and subjective reasoning quality (70%) via `SolutionEvaluator`. Scenario ground truth is strictly protected and never exposed to the player or LLM.
 
 ## Repository Structure
 
