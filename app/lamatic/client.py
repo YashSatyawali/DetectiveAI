@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 import httpx
+import lamatic.client
 from lamatic import Lamatic
 
 from app.core.config import settings
@@ -16,6 +17,24 @@ from app.lamatic.exceptions import (
 from app.lamatic.schemas import AgentResponse
 
 logger = logging.getLogger(__name__)
+
+
+# Patch SDK's internal httpx client to bypass SSL verification
+# (handles hostnames with underscores like 'detective_ai945.lamatic.dev')
+class _UnverifiedClient(httpx.Client):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["verify"] = False
+        super().__init__(*args, **kwargs)
+
+
+class _UnverifiedAsyncClient(httpx.AsyncClient):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["verify"] = False
+        super().__init__(*args, **kwargs)
+
+
+lamatic.client.httpx.Client = _UnverifiedClient  # type: ignore[misc]
+lamatic.client.httpx.AsyncClient = _UnverifiedAsyncClient  # type: ignore[misc]
 
 
 class LamaticClient:
