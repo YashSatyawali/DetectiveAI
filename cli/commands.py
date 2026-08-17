@@ -34,9 +34,12 @@ from app.services.suspect_knowledge import SuspectKnowledgeBuilder
 from cli.formatting import (
     format_action_result,
     format_error,
-    format_game_state,
     format_history,
+    format_investigation_status,
+    format_location_tag,
     format_scenarios_list,
+    format_solve_briefing,
+    render_ai_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +59,7 @@ def scenarios_cmd() -> None:
 
 
 def start_cmd(scenario_id: str) -> str:
-    """Start a new game session for a scenario."""
+    """Start a new game session for a scenario by ID or name."""
     logger.info("CLI start requested: scenario_id=%s", scenario_id)
     init_db()
     db = SessionLocal()
@@ -66,13 +69,23 @@ def start_cmd(scenario_id: str) -> str:
         logger.info(
             "CLI session started: session_id=%s scenario_id=%s",
             state.session_id,
-            scenario_id,
+            state.scenario_id,
         )
-        print("Game Session Started Successfully!\n")
-        print(format_game_state(state))
+
+        ctx_builder = InvestigationContextBuilder(session_service=service)
+        context = ctx_builder.build_context(state.session_id, db=db)
+
+        print("\n" + "=" * 70)
+        print("                  GAME SESSION STARTED SUCCESSFULLY")
+        print("=" * 70)
+        print(f"Scenario   : {context.case_title} ({state.scenario_id})")
+        print(f"Session ID : {state.session_id}")
+        print("=" * 70 + "\n")
+
+        print(format_investigation_status(context, show_actions=True))
         print(
-            "\n[Tip] To enter interactive mode, run: "
-            f"python -m cli play {state.session_id}"
+            "\n[Tip] To enter the full interactive shell, run: "
+            f"python -m cli play {state.session_id}\n"
         )
         return state.session_id
     except (ScenarioError, GameEngineError) as err:
@@ -84,15 +97,16 @@ def start_cmd(scenario_id: str) -> str:
 
 
 def state_cmd(session_id: str) -> None:
-    """View player-facing current game state for a session."""
+    """View player-facing current game state and status for a session."""
     logger.info("CLI state requested: session_id=%s", session_id)
     init_db()
     db = SessionLocal()
     try:
         service = SessionService()
-        session_obj = service.get_session(session_id, db=db)
-        state = service.to_game_state_dto(session_obj)
-        print(format_game_state(state))
+        service.get_session(session_id, db=db)
+        ctx_builder = InvestigationContextBuilder(session_service=service)
+        context = ctx_builder.build_context(session_id, db=db)
+        print(format_investigation_status(context, show_actions=True))
     except GameEngineError as err:
         logger.warning("CLI state failed for session_id=%s: %s", session_id, err)
         print(format_error(str(err)))
@@ -143,9 +157,18 @@ def action_cmd(session_id: str, action: str, target_id: str | None = None) -> No
         engine = GameEngine()
         result = engine.execute_action(session_id, action_dto, db=db)
         print(format_action_result(result))
-    except GameEngineError as err:
+
+        # Show updated compact next actions if session is in progress
+        if result.state.status == SessionStatus.IN_PROGRESS:
+            ctx_builder = InvestigationContextBuilder()
+            context = ctx_builder.build_context(session_id, db=db)
+            print("\n" + format_investigation_status(context, show_actions=True))
+    except (GameEngineError, ScenarioError) as err:
         logger.warning(
-            "CLI action failed for session_id=%s action=%s: %s", session_id, action, err
+            "CLI action failed for session_id=%s action=%s: %s",
+            session_id,
+            action,
+            err,
         )
         print(format_error(str(err)))
         sys.exit(1)
@@ -160,7 +183,6 @@ def history_cmd(session_id: str) -> None:
     db = SessionLocal()
     try:
         service = SessionService()
-        # Verify session exists
         service.get_session(session_id, db=db)
 
         events = db.scalars(
@@ -185,21 +207,22 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
     try:
         service = SessionService()
         engine = GameEngine()
-        loader = ScenarioLoader()
+        ctx_builder = InvestigationContextBuilder(session_service=service)
 
-        session_obj = service.get_session(session_id, db=db)
-        state = service.to_game_state_dto(session_obj)
-        scenario = loader.load(state.scenario_id)
+        # Initial validation & context load
+        service.get_session(session_id, db=db)
+        context = ctx_builder.build_context(session_id, db=db)
 
         print("\n" + "=" * 70)
         print("                  DETECTIVE AI INTERACTIVE INVESTIGATION")
         print("=" * 70)
-        print(f"Scenario : {scenario.name}")
-        print(f"Case     : {scenario.case.title}")
-        print(f"Session  : {state.session_id}")
-        print(f"Status   : {state.status.value.upper()}")
+        print(f"Scenario : {context.case_title}")
+        print(f"Session  : {context.session_id}")
         print("=" * 70)
         print("Type 'help' for available commands or 'quit' to exit.\n")
+
+        print(format_investigation_status(context, show_actions=True))
+        print()
 
         while True:
             try:
@@ -223,11 +246,13 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
                 _print_interactive_help()
                 continue
 
-            if cmd == "state":
-                # Refresh session state
-                db.refresh(session_obj)
-                cur_state = service.to_game_state_dto(session_obj)
-                print(format_game_state(cur_state))
+            if cmd in ("state", "status"):
+                context = ctx_builder.build_context(session_id, db=db)
+                print(format_investigation_status(context, show_actions=True))
+                continue
+
+            if cmd == "history":
+                history_cmd(session_id)
                 continue
 
             if cmd == "ask":
@@ -235,38 +260,56 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
                     print(format_error("Usage: ask <message>"))
                     continue
                 try:
-                    builder = InvestigationContextBuilder()
-                    ctx = builder.build_context(session_id, db=db)
+                    ctx = ctx_builder.build_context(session_id, db=db)
                     agent = DetectiveAgent()
                     res = agent.ask(arg, context=ctx)
-                    print("\nDetective AI (Lamatic Agent):")
-                    print(res.content)
+                    render_ai_response(
+                        title="DETECTIVE AI ASSISTANT",
+                        content=res.content,
+                        meta={"Session ID": session_id, "Question": arg},
+                    )
                 except (LamaticError, GameEngineError) as err:
                     logger.warning(
-                        "Interactive ask error for session_id=%s: %s", session_id, err
+                        "Interactive ask error for session_id=%s: %s",
+                        session_id,
+                        err,
                     )
                     print(f"[Lamatic Error]\n{err}")
                 continue
 
             if cmd == "interrogate":
                 if not arg:
-                    print(format_error("Usage: interrogate <suspect_id>"))
+                    print(
+                        format_error(
+                            "Usage: interrogate <suspect_id or name>\n"
+                            "Example: interrogate suspect_02 OR 'Marcus Reed'"
+                        )
+                    )
                     continue
-                interrogate_cmd(session_id, arg, input_fn=input_fn)
+                interrogate_cmd(session_id, arg, input_fn=input_fn, db=db)
+                context = ctx_builder.build_context(session_id, db=db)
+                print("\n" + format_investigation_status(context, show_actions=True))
                 continue
 
             if cmd == "examine":
                 if not arg:
-                    print(format_error("Usage: examine <evidence_id>"))
+                    print(
+                        format_error(
+                            "Usage: examine <evidence_id or name>\n"
+                            "Example: examine evidence_02 OR 'Security Access Log'"
+                        )
+                    )
                     continue
                 examine_cmd(session_id, arg, db=db)
+                context = ctx_builder.build_context(session_id, db=db)
+                print("\n" + format_investigation_status(context, show_actions=True))
                 continue
 
             if cmd == "solve":
                 solve_cmd(session_id, target_id=arg, input_fn=input_fn, db=db)
                 continue
 
-            # Action execution in REPL
+            # Action execution in REPL (inspect, move, interview, advance)
             mapping = {
                 "inspect": ActionType.INSPECT,
                 "move": ActionType.MOVE,
@@ -292,7 +335,12 @@ def play_cmd(session_id: str, input_fn: Any = input) -> None:
                     status_upper = result.state.status.value.upper()
                     print(
                         "\n[Notice] Investigation complete. Session status: "
-                        f"{status_upper}"
+                        f"{status_upper}\n"
+                    )
+                else:
+                    context = ctx_builder.build_context(session_id, db=db)
+                    print(
+                        "\n" + format_investigation_status(context, show_actions=True)
                     )
             except (GameEngineError, ScenarioError) as err:
                 logger.warning(
@@ -322,8 +370,11 @@ def ask_cmd(message: str, session_id: str | None = None) -> None:
 
         agent = DetectiveAgent()
         response = agent.ask(message, context=context)
-        print("\nDetective AI (Lamatic Agent):")
-        print(response.content)
+        render_ai_response(
+            title="DETECTIVE AI ADVISOR",
+            content=response.content,
+            meta={"Question": message},
+        )
     except (LamaticError, GameEngineError) as err:
         logger.warning("CLI ask failed for session_id=%s: %s", session_id, err)
         print(f"[Lamatic Error]\n{err}")
@@ -340,7 +391,9 @@ def interrogate_cmd(
 ) -> None:
     """Start interactive AI interrogation with a suspect via GameEngine and Agent."""
     logger.info(
-        "CLI interrogate requested: session_id=%s suspect_id=%s", session_id, suspect_id
+        "CLI interrogate requested: session_id=%s suspect_id=%s",
+        session_id,
+        suspect_id,
     )
     init_db()
     close_db = False
@@ -350,18 +403,27 @@ def interrogate_cmd(
     try:
         engine = GameEngine()
         session_service = SessionService()
+        loader = ScenarioLoader()
 
-        # 1. GameEngine validates INTERVIEW action & updates session state
+        # 1. Resolve suspect ID from name or ID
+        session_obj = session_service.get_session(session_id, db=db)
+        state_dto = session_service.to_game_state_dto(session_obj)
+
+        suspect_builder = SuspectKnowledgeBuilder(loader=loader)
+        canonical_suspect_id = suspect_builder.resolve_suspect_id(
+            state_dto.scenario_id, suspect_id
+        )
+
+        # 2. GameEngine validates INTERVIEW action & updates session state
         interview_action = GameActionDTO(
-            action_type=ActionType.INTERVIEW, target_id=suspect_id
+            action_type=ActionType.INTERVIEW, target_id=canonical_suspect_id
         )
         engine.execute_action(session_id, interview_action, db=db)
 
-        # 2. Get session & build player-safe SuspectKnowledge
-        session_obj = session_service.get_session(session_id, db=db)
-        state_dto = session_service.to_game_state_dto(session_obj)
-        builder = SuspectKnowledgeBuilder()
-        knowledge = builder.build_knowledge(state_dto.scenario_id, suspect_id)
+        # 3. Build player-safe SuspectKnowledge
+        knowledge = suspect_builder.build_knowledge(
+            state_dto.scenario_id, canonical_suspect_id
+        )
 
         print("\n" + "=" * 70)
         print("                  SUSPECT INTERROGATION SESSION")
@@ -379,7 +441,8 @@ def interrogate_cmd(
 
         while True:
             try:
-                line = input_fn(f"{suspect_id}> ")
+                prompt_label = f"{knowledge.name} ({knowledge.suspect_id})> "
+                line = input_fn(prompt_label)
             except (EOFError, KeyboardInterrupt):
                 print(f"\nEnding interrogation with {knowledge.name}.\n")
                 break
@@ -399,12 +462,15 @@ def interrogate_cmd(
                     user_message=clean_line,
                     db=db,
                 )
-                print(f"\n{knowledge.name}:")
-                print(f"{response.content}\n")
+                render_ai_response(
+                    title=f"STATEMENT: {knowledge.name.upper()}",
+                    content=response.content,
+                    meta={"Suspect": f"{knowledge.name} ({knowledge.suspect_id})"},
+                )
             except LamaticError as err:
                 logger.warning(
                     "Interrogation turn error for suspect_id=%s session_id=%s: %s",
-                    suspect_id,
+                    canonical_suspect_id,
                     session_id,
                     err,
                 )
@@ -429,7 +495,9 @@ def interrogate_cmd(
 def examine_cmd(session_id: str, evidence_id: str, db: Any | None = None) -> None:
     """Examine evidence via GameEngine and provide AI forensic analysis."""
     logger.info(
-        "CLI examine requested: session_id=%s evidence_id=%s", session_id, evidence_id
+        "CLI examine requested: session_id=%s evidence_id=%s",
+        session_id,
+        evidence_id,
     )
     init_db()
     close_db = False
@@ -439,40 +507,48 @@ def examine_cmd(session_id: str, evidence_id: str, db: Any | None = None) -> Non
     try:
         engine = GameEngine()
         session_service = SessionService()
+        loader = ScenarioLoader()
 
-        # 1. GameEngine validates session & executes EXAMINE_EVIDENCE
+        session_obj = session_service.get_session(session_id, db=db)
+        state_dto = session_service.to_game_state_dto(session_obj)
+
+        # 1. Resolve canonical evidence ID from name or ID
+        ek_builder = EvidenceKnowledgeBuilder(loader=loader)
+        canonical_evidence_id = ek_builder.resolve_evidence_id(
+            state_dto.scenario_id, evidence_id
+        )
+
+        # 2. GameEngine validates session & executes EXAMINE_EVIDENCE
         action_dto = GameActionDTO(
-            action_type=ActionType.EXAMINE_EVIDENCE, target_id=evidence_id
+            action_type=ActionType.EXAMINE_EVIDENCE, target_id=canonical_evidence_id
         )
         result = engine.execute_action(session_id, action_dto, db=db)
         print(format_action_result(result))
 
-        # 2. Build player-safe EvidenceKnowledge & InvestigationContext
-        session_obj = session_service.get_session(session_id, db=db)
-        state_dto = session_service.to_game_state_dto(session_obj)
-
-        ek_builder = EvidenceKnowledgeBuilder()
-        knowledge = ek_builder.build_knowledge(state_dto.scenario_id, evidence_id)
+        # 3. Build player-safe EvidenceKnowledge & InvestigationContext
+        knowledge = ek_builder.build_knowledge(
+            state_dto.scenario_id, canonical_evidence_id
+        )
 
         ctx_builder = InvestigationContextBuilder()
         context = ctx_builder.build_context(session_id, db=db)
 
-        # 3. Perform AI forensic interpretation
+        # 4. Perform AI forensic interpretation
         try:
             agent = EvidenceAgent()
             response = agent.ask(knowledge=knowledge, context=context)
-            print("\n" + "=" * 70)
-            print("                     AI FORENSIC ANALYSIS")
-            print("=" * 70)
-            print(f"Item Analyzed : {knowledge.name} ({knowledge.evidence_id})")
-            print(f"Location      : {knowledge.location_name or 'N/A'}")
-            print("-" * 70)
-            print(response.content)
-            print("=" * 70 + "\n")
+            render_ai_response(
+                title="AI FORENSIC ANALYSIS",
+                content=response.content,
+                meta={
+                    "Item Analyzed": f"{knowledge.name} ({knowledge.evidence_id})",
+                    "Location": format_location_tag(knowledge.location_name),
+                },
+            )
         except LamaticError as err:
             logger.warning(
                 "AI forensic examine error for evidence_id=%s session_id=%s: %s",
-                evidence_id,
+                canonical_evidence_id,
                 session_id,
                 err,
             )
@@ -505,7 +581,7 @@ def solve_cmd(
     input_fn: Any = input,
     db: Any | None = None,
 ) -> None:
-    """Submit case solution theory for evaluation and resolution."""
+    """Submit case solution theory for evaluation and resolution with full briefing."""
     logger.info(
         "CLI solve requested: session_id=%s target_id=%s", session_id, target_id
     )
@@ -517,7 +593,7 @@ def solve_cmd(
     try:
         session_service = SessionService()
 
-        # Verify session state before prompt
+        # 1. Verify session state before prompt
         session_obj = session_service.get_session(session_id, db=db)
         if session_obj.status in (
             SessionStatus.SOLVED.value,
@@ -532,43 +608,64 @@ def solve_cmd(
                 f"Cannot submit solution: session '{session_id}' is already completed."
             )
 
-        print("\n" + "=" * 70)
-        print("                  FINAL CASE SOLUTION SUBMISSION")
-        print("=" * 70)
-        print("Provide your case theory, supporting evidence, and reasoning below.\n")
+        # 2. Build player-safe InvestigationContext and display rich briefing
+        ctx_builder = InvestigationContextBuilder(session_service=session_service)
+        context = ctx_builder.build_context(session_id, db=db)
 
+        print(format_solve_briefing(context))
+
+        # 3. Prompt user for case submission inputs
         if target_id:
-            culprit_id = target_id.strip()
-            print(f"Culprit (suspect_id): {culprit_id}")
+            raw_culprit = target_id.strip()
+            print(f"Culprit (suspect_id or name): {raw_culprit}")
         else:
-            culprit_id = input_fn("Culprit (suspect_id): ").strip()
+            raw_culprit = input_fn("Culprit (suspect_id or name): ").strip()
+
+        # Resolve culprit ID via SuspectKnowledgeBuilder
+        suspect_builder = SuspectKnowledgeBuilder()
+        canonical_culprit_id = suspect_builder.resolve_suspect_id(
+            context.scenario_id, raw_culprit
+        )
+
         motive = input_fn("Motive explanation: ").strip()
         explanation = input_fn("What happened? ").strip()
-        raw_evidence = input_fn("Supporting evidence IDs (comma-separated): ").strip()
+        raw_evidence = input_fn(
+            "Supporting evidence IDs or names (comma-separated): "
+        ).strip()
         reasoning = input_fn("Reasoning explaining evidence: ").strip()
         timeline = input_fn("Timeline reconstruction (optional): ").strip()
 
-        evidence_ids = [e.strip() for e in raw_evidence.split(",") if e.strip()]
+        # Resolve evidence IDs
+        ev_builder = EvidenceKnowledgeBuilder()
+        resolved_evidence_ids: list[str] = []
+        for raw_e in raw_evidence.split(","):
+            clean_e = raw_e.strip()
+            if clean_e:
+                canonical_ev_id = ev_builder.resolve_evidence_id(
+                    context.scenario_id, clean_e
+                )
+                resolved_evidence_ids.append(canonical_ev_id)
 
         print("\nReview Case Submission:")
-        print(f"  Culprit   : {culprit_id}")
+        print(f"  Culprit   : {canonical_culprit_id}")
         print(f"  Motive    : {motive}")
-        print(f"  Evidence  : {evidence_ids}")
+        print(f"  Evidence  : {resolved_evidence_ids}")
         confirm = input_fn("Submit case? [y/N]: ").strip().lower()
 
         if confirm not in ("y", "yes"):
             logger.info(
-                "CLI solve submission cancelled by user for session_id=%s", session_id
+                "CLI solve submission cancelled by user for session_id=%s",
+                session_id,
             )
             print("Submission cancelled.\n")
             return
 
         submission = SolutionSubmission(
             session_id=session_id,
-            culprit_id=culprit_id,
+            culprit_id=canonical_culprit_id,
             motive=motive,
             explanation=explanation,
-            supporting_evidence_ids=evidence_ids,
+            supporting_evidence_ids=resolved_evidence_ids,
             reasoning=reasoning,
             timeline_explanation=timeline if timeline else None,
         )
@@ -576,7 +673,7 @@ def solve_cmd(
         service = SolutionEvaluationService()
         action_result, evaluation = service.evaluate_and_submit(submission, db=db)
 
-        # Display Case Evaluation Report
+        # 4. Display Case Evaluation Report
         print("\n" + "=" * 70)
         print("                     CASE RESOLUTION EVALUATION")
         print("=" * 70)
@@ -594,19 +691,19 @@ def solve_cmd(
         if evaluation.strengths:
             print("Strengths:")
             for s in evaluation.strengths:
-                print(f"  • {s}")
+                print(f"  - {s}")
             print()
 
         if evaluation.weaknesses:
             print("Weaknesses:")
             for w in evaluation.weaknesses:
-                print(f"  • {w}")
+                print(f"  - {w}")
             print()
 
         if evaluation.contradictions:
             print("Contradictions:")
             for c in evaluation.contradictions:
-                print(f"  • {c}")
+                print(f"  - {c}")
             print()
 
         print("Feedback:")
@@ -618,6 +715,8 @@ def solve_cmd(
         ScenarioError,
         InvalidSolutionError,
         SessionAlreadyCompletedError,
+        SuspectNotAvailableError,
+        EvidenceNotFoundError,
     ) as err:
         logger.warning("CLI solve failed for session_id=%s: %s", session_id, err)
         print(format_error(str(err)))
@@ -634,17 +733,39 @@ def _print_interactive_help() -> None:
     help_text = """
 Available Interactive Commands:
 
-  ask <message>           Ask the prototype Lamatic AI agent a question
-  interrogate <suspect_id> Start conversational AI interrogation with a suspect
-  examine <evidence_id>   Examine evidence and view AI forensic analysis
-  inspect                 Inspect current location for evidence
-  move <location_id>      Move to an unlocked location
-  interview <suspect_id>  Interview a suspect
-  advance                 Advance to the next investigation stage
-  solve                   Submit final case solution theory and receive evaluation
-  state                   View current investigation state
-  history                 View chronological audit history
-  help                    Display this help menu
-  quit / exit             Exit interactive investigation mode
+  inspect
+      Inspect the current location for evidence and clues.
+
+  move <location_id or name>
+      Move to an available location (e.g. 'location_02' or 'Archive Reading Room').
+
+  interview <suspect_id or name>
+      Conduct a standard interview with a suspect (e.g. 'Marcus Reed').
+
+  interrogate <suspect_id or name>
+      Start an interactive AI-powered suspect interrogation session.
+
+  examine <evidence_id or name>
+      Examine discovered evidence and receive AI forensic analysis.
+
+  advance
+      Advance to the next stage when current stage requirements are met.
+
+  state / status
+      Display full investigation game state and available next actions.
+
+  history
+      Show chronological audit history of investigation events.
+
+  solve
+      Review complete case briefing and submit final case solution theory.
+
+  help
+      Display this command help reference.
+
+  quit / exit
+      Exit interactive investigation shell.
+
+Note: You can use either the ID or the Name for locations, suspects, and evidence.
 """
     print(help_text)

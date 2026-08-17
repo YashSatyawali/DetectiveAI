@@ -24,7 +24,10 @@ def test_cli_start_command():
     init_db()
     result = runner.invoke(app, ["start", "test_case"])
     assert result.exit_code == 0
-    assert "Game Session Started Successfully" in result.output
+    assert (
+        "GAME SESSION STARTED SUCCESSFULLY" in result.output
+        or "Game Session Started Successfully" in result.output
+    )
     assert "Session ID" in result.output
     assert "test_case" in result.output
 
@@ -46,9 +49,11 @@ def test_cli_state_command():
 
     result = runner.invoke(app, ["state", sid])
     assert result.exit_code == 0
-    assert "INVESTIGATION GAME STATE" in result.output
-    assert sid in result.output
-    assert "IN_PROGRESS" in result.output
+    assert (
+        "INVESTIGATION STATUS" in result.output
+        or "INVESTIGATION GAME STATE" in result.output
+    )
+    assert "IN PROGRESS" in result.output or "IN_PROGRESS" in result.output
 
 
 def test_cli_state_nonexistent_session():

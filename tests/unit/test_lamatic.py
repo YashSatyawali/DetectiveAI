@@ -188,7 +188,7 @@ def test_cli_ask_command_success(monkeypatch):
 
     result = runner.invoke(app, ["ask", "What makes a good detective?"])
     assert result.exit_code == 0
-    assert "Detective AI (Lamatic Agent):" in result.output
+    assert "DETECTIVE AI" in result.output or "Detective AI" in result.output
     assert "Observation and deduction are fundamental." in result.output
 
 

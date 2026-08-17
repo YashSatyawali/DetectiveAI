@@ -28,7 +28,7 @@ class SessionService:
         registry: ScenarioRegistry | None = None,
     ) -> None:
         self.loader = loader or ScenarioLoader()
-        self.registry = registry or ScenarioRegistry()
+        self.registry = registry or ScenarioRegistry(base_dir=self.loader.base_dir)
 
     def start_game(
         self,
@@ -44,8 +44,11 @@ class SessionService:
         4. Persists GameSession and initial GameEvent record in the database.
         5. Returns initial GameStateDTO.
         """
-        logger.info("Starting new game session for scenario_id=%s", scenario_id)
-        scenario = self.loader.load(scenario_id)
+        canonical_scenario_id = self.registry.resolve_scenario_id(scenario_id)
+        logger.info(
+            "Starting new game session for scenario_id=%s", canonical_scenario_id
+        )
+        scenario = self.loader.load(canonical_scenario_id)
 
         # 2. Ensure parent Case DB entry exists for foreign key integrity
         db_case = db.scalar(select(Case).where(Case.id == scenario.case.id))

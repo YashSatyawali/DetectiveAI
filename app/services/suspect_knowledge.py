@@ -37,14 +37,61 @@ class SuspectKnowledgeBuilder:
     def __init__(self, loader: ScenarioLoader | None = None) -> None:
         self.loader = loader or ScenarioLoader()
 
+    def resolve_suspect_id(self, scenario_id: str, identifier: str) -> str:
+        """Resolve suspect ID from exact ID, exact name, or case-insensitive name."""
+        if not identifier or not identifier.strip():
+            raise SuspectNotAvailableError("Suspect identifier cannot be empty.")
+
+        clean = identifier.strip()
+        scenario_def = self.loader.load(scenario_id)
+        public_scenario = scenario_def.to_player_view()
+        suspects = public_scenario.suspects
+
+        # 1. Exact ID match
+        for s in suspects:
+            if s.id == clean:
+                return s.id
+
+        # 2. Exact Name match
+        name_matches = [s for s in suspects if s.name == clean]
+        if len(name_matches) == 1:
+            return name_matches[0].id
+        elif len(name_matches) > 1:
+            match_ids = ", ".join(f"{s.name} ({s.id})" for s in name_matches)
+            raise SuspectNotAvailableError(
+                f"Ambiguous suspect name '{identifier}'. Matches: {match_ids}"
+            )
+
+        # 3. Case-insensitive ID match
+        ci_id_matches = [s for s in suspects if s.id.lower() == clean.lower()]
+        if len(ci_id_matches) == 1:
+            return ci_id_matches[0].id
+
+        # 4. Case-insensitive Name match
+        ci_name_matches = [s for s in suspects if s.name.lower() == clean.lower()]
+        if len(ci_name_matches) == 1:
+            return ci_name_matches[0].id
+        elif len(ci_name_matches) > 1:
+            match_ids = ", ".join(f"{s.name} ({s.id})" for s in ci_name_matches)
+            raise SuspectNotAvailableError(
+                f"Ambiguous suspect name '{identifier}'. Matches: {match_ids}"
+            )
+
+        avail_list = ", ".join(f"{s.name} ({s.id})" for s in suspects)
+        raise SuspectNotAvailableError(
+            f"Suspect '{identifier}' not found in scenario '{scenario_id}'. "
+            f"Available suspects: {avail_list}"
+        )
+
     def build_knowledge(self, scenario_id: str, suspect_id: str) -> SuspectKnowledge:
         """Construct player/agent-safe SuspectKnowledge for a suspect in a scenario."""
+        canonical_suspect_id = self.resolve_suspect_id(scenario_id, suspect_id)
         scenario_def = self.loader.load(scenario_id)
         public_scenario = scenario_def.to_player_view()
 
         # Locate requested suspect from public scenario view (ground truth stripped)
         suspect = next(
-            (s for s in public_scenario.suspects if s.id == suspect_id), None
+            (s for s in public_scenario.suspects if s.id == canonical_suspect_id), None
         )
         if not suspect:
             raise SuspectNotAvailableError(
@@ -59,7 +106,7 @@ class SuspectKnowledgeBuilder:
                 "timestamp": event.timestamp_str,
             }
             for event in public_scenario.timeline
-            if event.suspect_id == suspect_id or event.suspect_id is None
+            if event.suspect_id == canonical_suspect_id or event.suspect_id is None
         ]
 
         # Public evidence names (excluding secret discovery metadata)

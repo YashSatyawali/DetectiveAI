@@ -36,14 +36,64 @@ class EvidenceKnowledgeBuilder:
     def __init__(self, loader: ScenarioLoader | None = None) -> None:
         self.loader = loader or ScenarioLoader()
 
+    def resolve_evidence_id(self, scenario_id: str, identifier: str) -> str:
+        """Resolve evidence ID from exact ID, exact name, or case-insensitive name."""
+        if not identifier or not identifier.strip():
+            raise EvidenceNotFoundError("Evidence identifier cannot be empty.")
+
+        clean = identifier.strip()
+        scenario_def = self.loader.load(scenario_id)
+        public_scenario = scenario_def.to_player_view()
+        evidence_list = public_scenario.evidence
+
+        # 1. Exact ID match
+        for ev in evidence_list:
+            if ev.id == clean:
+                return ev.id
+
+        # 2. Exact Name match
+        name_matches = [ev for ev in evidence_list if ev.name == clean]
+        if len(name_matches) == 1:
+            return name_matches[0].id
+        elif len(name_matches) > 1:
+            match_ids = ", ".join(f"{ev.name} ({ev.id})" for ev in name_matches)
+            raise EvidenceNotFoundError(
+                f"Ambiguous evidence name '{identifier}'. Matches: {match_ids}"
+            )
+
+        # 3. Case-insensitive ID match
+        ci_id_matches = [ev for ev in evidence_list if ev.id.lower() == clean.lower()]
+        if len(ci_id_matches) == 1:
+            return ci_id_matches[0].id
+
+        # 4. Case-insensitive Name match
+        ci_name_matches = [
+            ev for ev in evidence_list if ev.name.lower() == clean.lower()
+        ]
+        if len(ci_name_matches) == 1:
+            return ci_name_matches[0].id
+        elif len(ci_name_matches) > 1:
+            match_ids = ", ".join(f"{ev.name} ({ev.id})" for ev in ci_name_matches)
+            raise EvidenceNotFoundError(
+                f"Ambiguous evidence name '{identifier}'. Matches: {match_ids}"
+            )
+
+        avail_list = ", ".join(f"{ev.name} ({ev.id})" for ev in evidence_list)
+        raise EvidenceNotFoundError(
+            f"Evidence '{identifier}' not found in scenario '{scenario_id}'. "
+            f"Available evidence: {avail_list}"
+        )
+
     def build_knowledge(self, scenario_id: str, evidence_id: str) -> EvidenceKnowledge:
         """Construct player-safe EvidenceKnowledge for an evidence item."""
+        canonical_evidence_id = self.resolve_evidence_id(scenario_id, evidence_id)
         scenario_def = self.loader.load(scenario_id)
         public_scenario = scenario_def.to_player_view()
 
         # Locate requested evidence from public scenario view (ground truth stripped)
         evidence = next(
-            (ev for ev in public_scenario.evidence if ev.id == evidence_id), None
+            (ev for ev in public_scenario.evidence if ev.id == canonical_evidence_id),
+            None,
         )
         if not evidence:
             raise EvidenceNotFoundError(

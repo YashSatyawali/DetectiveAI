@@ -1,5 +1,4 @@
-"""Typer application setup for DetectiveAI CLI."""
-
+import os
 from typing import Annotated
 
 import typer
@@ -18,13 +17,31 @@ from cli.commands import (
     state_cmd,
 )
 
-configure_logging()
+# Configure logging with console=False by default for clean CLI gameplay output.
+# Logs are preserved in logs/detective_ai.log.
+configure_logging(console=False)
 
 app = typer.Typer(
     name="detective",
     help="DetectiveAI - Deterministic Interactive Investigation CLI",
     add_completion=False,
 )
+
+
+@app.callback()
+def main(
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Enable verbose internal application logging to console",
+        ),
+    ] = False,
+) -> None:
+    """DetectiveAI CLI - AI-Powered Interactive Investigation Engine."""
+    if verbose or os.getenv("CLI_VERBOSE", "").lower() in ("1", "true"):
+        configure_logging(console=True)
 
 
 @app.command("scenarios")
@@ -36,10 +53,13 @@ def list_scenarios() -> None:
 @app.command("start")
 def start_game(
     scenario_id: Annotated[
-        str, typer.Argument(help="ID of scenario to start (e.g. test_case)")
+        str,
+        typer.Argument(
+            help="Scenario ID or name (e.g. test_case, 'The Midnight Archive')"
+        ),
     ],
 ) -> None:
-    """Start a new game session for a scenario."""
+    """Start a new game session for a scenario by ID or name."""
     start_cmd(scenario_id)
 
 

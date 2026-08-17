@@ -141,19 +141,104 @@ class GameEngine:
         )
         return result
 
+    def resolve_location_id(
+        self, scenario: ScenarioDefinition, identifier: str | None
+    ) -> str:
+        """Resolve location ID from exact ID, exact name, or case-insensitive name."""
+        if not identifier or not identifier.strip():
+            logger.warning("MOVE action failed: missing target_id")
+            raise InvalidLocationError("MOVE action requires target_id (location ID).")
+
+        clean = identifier.strip()
+        # 1. Exact ID
+        for loc in scenario.locations:
+            if loc.id == clean:
+                return loc.id
+        # 2. Exact Name
+        name_matches = [loc for loc in scenario.locations if loc.name == clean]
+        if len(name_matches) == 1:
+            return name_matches[0].id
+        # 3. Case-insensitive ID
+        ci_id = [loc for loc in scenario.locations if loc.id.lower() == clean.lower()]
+        if len(ci_id) == 1:
+            return ci_id[0].id
+        # 4. Case-insensitive Name
+        ci_name = [
+            loc for loc in scenario.locations if loc.name.lower() == clean.lower()
+        ]
+        if len(ci_name) == 1:
+            return ci_name[0].id
+
+        logger.warning(
+            "MOVE action failed: location %s does not exist in scenario %s",
+            identifier,
+            scenario.scenario_id,
+        )
+        raise InvalidLocationError(
+            f"Location '{identifier}' does not exist in scenario "
+            f"'{scenario.scenario_id}'."
+        )
+
+    def check_stage_advancement_ready(
+        self, session_id: str, db: Session
+    ) -> tuple[bool, str | None]:
+        """Check whether the active session satisfies stage advancement requirements.
+
+        Returns:
+            (True, next_stage_name) if ready to advance.
+            (False, None) if in progress (missing requirements).
+        """
+        session = self.session_service.get_session(session_id, db=db)
+        meta = session.state_metadata or {}
+        scenario_id = meta.get("scenario_id") or session.case_id
+        scenario = self.loader.load(scenario_id)
+
+        curr_stage_id = meta.get("current_stage_id")
+        curr_stage = next(
+            (st for st in scenario.stages if st.id == curr_stage_id), None
+        )
+        if not curr_stage:
+            curr_stage = sorted(scenario.stages, key=lambda s: s.order)[0]
+
+        reqs = curr_stage.requirements or {}
+        req_evs = reqs.get("required_evidence_ids") or reqs.get("evidence_ids", [])
+        req_locs = reqs.get("required_location_ids") or reqs.get("location_ids", [])
+        req_suss = reqs.get("required_suspect_ids") or reqs.get("suspect_ids", [])
+
+        discovered_evs = set(meta.get("discovered_evidence_ids", []))
+        visited_locs = set(meta.get("visited_location_ids", []))
+        interviewed_suss = set(meta.get("interviewed_suspect_ids", []))
+
+        is_ready = not (
+            any(ev not in discovered_evs for ev in req_evs)
+            or any(loc not in visited_locs for loc in req_locs)
+            or any(sus not in interviewed_suss for sus in req_suss)
+        )
+
+        if not is_ready:
+            return False, None
+
+        sorted_stages = sorted(scenario.stages, key=lambda s: s.order)
+        curr_idx = next(
+            (i for i, s in enumerate(sorted_stages) if s.id == curr_stage.id), 0
+        )
+        next_stage = (
+            sorted_stages[curr_idx + 1] if curr_idx + 1 < len(sorted_stages) else None
+        )
+        next_stage_str = (
+            f"Stage {next_stage.order} - {next_stage.name} ({next_stage.id})"
+            if next_stage
+            else None
+        )
+        return True, next_stage_str
+
     def _handle_move(
         self,
         session: GameSession,
         scenario: ScenarioDefinition,
         action: GameActionDTO,
     ) -> ActionResultDTO:
-        target_id = action.target_id
-        if not target_id:
-            logger.warning(
-                "MOVE action failed: missing target_id for session_id=%s", session.id
-            )
-            raise InvalidLocationError("MOVE action requires target_id (location ID).")
-
+        target_id = self.resolve_location_id(scenario, action.target_id)
         location = next(
             (loc for loc in scenario.locations if loc.id == target_id), None
         )
@@ -276,8 +361,7 @@ class GameEngine:
         scenario: ScenarioDefinition,
         action: GameActionDTO,
     ) -> ActionResultDTO:
-        target_id = action.target_id
-        if not target_id:
+        if not action.target_id:
             logger.warning(
                 "INTERVIEW action failed: missing target_id for session_id=%s",
                 session.id,
@@ -285,6 +369,12 @@ class GameEngine:
             raise SuspectNotAvailableError(
                 "INTERVIEW action requires target_id (suspect ID)."
             )
+
+        from app.services.suspect_knowledge import SuspectKnowledgeBuilder
+
+        target_id = SuspectKnowledgeBuilder(self.loader).resolve_suspect_id(
+            scenario.scenario_id, action.target_id
+        )
 
         suspect = next((s for s in scenario.suspects if s.id == target_id), None)
         if not suspect:
@@ -340,8 +430,7 @@ class GameEngine:
         scenario: ScenarioDefinition,
         action: GameActionDTO,
     ) -> ActionResultDTO:
-        target_id = action.target_id
-        if not target_id:
+        if not action.target_id:
             logger.warning(
                 "EXAMINE_EVIDENCE action failed: missing target_id for session_id=%s",
                 session.id,
@@ -349,6 +438,12 @@ class GameEngine:
             raise EvidenceNotDiscoveredError(
                 "EXAMINE_EVIDENCE action requires target_id (evidence ID)."
             )
+
+        from app.lamatic.evidence_knowledge import EvidenceKnowledgeBuilder
+
+        target_id = EvidenceKnowledgeBuilder(self.loader).resolve_evidence_id(
+            scenario.scenario_id, action.target_id
+        )
 
         meta = session.state_metadata or {}
         discovered_set = set(meta.get("discovered_evidence_ids", []))
@@ -382,12 +477,22 @@ class GameEngine:
             session.id,
         )
 
+        found_loc = (
+            next(
+                (loc for loc in scenario.locations if loc.id == evidence.location_id),
+                None,
+            )
+            if evidence.location_id
+            else None
+        )
+
         public_evidence = {
             "evidence_id": evidence.id,
             "name": evidence.name,
             "description": evidence.description,
             "evidence_type": evidence.evidence_type,
             "location_id": evidence.location_id,
+            "location_name": found_loc.name if found_loc else None,
             "discovery_metadata": evidence.discovery_metadata,
         }
 

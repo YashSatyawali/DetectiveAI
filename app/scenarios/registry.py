@@ -4,6 +4,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from app.scenarios.exceptions import (
+    ScenarioNotFoundError,
+    ScenarioValidationError,
+)
 from app.scenarios.loader import ScenarioLoader
 from app.scenarios.schemas import ScenarioDefinition
 
@@ -63,3 +67,76 @@ class ScenarioRegistry:
         """Retrieve and return a validated ScenarioDefinition by ID."""
         logger.info("Retrieving scenario by id: %s", scenario_id)
         return self.loader.load(scenario_id)
+
+    def resolve_scenario_id(self, identifier: str) -> str:
+        """Resolve scenario ID from exact ID, exact name, or case-insensitive name.
+
+        Resolution order:
+        1. Exact scenario ID match.
+        2. Exact scenario display/name match.
+        3. Case-insensitive scenario ID match.
+        4. Case-insensitive scenario display/name match.
+
+        Raises:
+            ScenarioNotFoundError: If no matching scenario is found.
+            ScenarioValidationError: If identifier matches multiple scenarios.
+        """
+        if not identifier or not identifier.strip():
+            raise ScenarioNotFoundError("Scenario identifier cannot be empty.")
+
+        clean_id = identifier.strip()
+        scenarios = self.list_scenarios()
+
+        # 1. Exact scenario ID match
+        for s in scenarios:
+            if s["id"] == clean_id:
+                return s["id"]
+
+        # 2. Exact scenario display/name match
+        name_matches = [s for s in scenarios if s["name"] == clean_id]
+        if len(name_matches) == 1:
+            return name_matches[0]["id"]
+        elif len(name_matches) > 1:
+            match_ids = ", ".join(s["id"] for s in name_matches)
+            raise ScenarioValidationError(
+                f"Ambiguous scenario name '{identifier}'. "
+                f"Matches multiple scenarios: {match_ids}"
+            )
+
+        # 3. Case-insensitive scenario ID match
+        ci_id_matches = [s for s in scenarios if s["id"].lower() == clean_id.lower()]
+        if len(ci_id_matches) == 1:
+            return ci_id_matches[0]["id"]
+
+        # Fallback for custom temporary directories not discovered by list_scenarios
+        if (self.base_dir / clean_id).is_dir():
+            try:
+                loaded = self.loader.load(clean_id)
+                return loaded.scenario_id
+            except Exception:
+                pass
+
+        if not scenarios:
+            raise ScenarioNotFoundError(
+                f"No scenarios available in '{self.base_dir}'. "
+                f"Cannot resolve '{identifier}'."
+            )
+
+        # 4. Case-insensitive scenario display/name match
+        ci_name_matches = [
+            s for s in scenarios if s["name"].lower() == clean_id.lower()
+        ]
+        if len(ci_name_matches) == 1:
+            return ci_name_matches[0]["id"]
+        elif len(ci_name_matches) > 1:
+            match_ids = ", ".join(s["id"] for s in ci_name_matches)
+            raise ScenarioValidationError(
+                f"Ambiguous scenario name '{identifier}'. "
+                f"Matches multiple scenarios: {match_ids}"
+            )
+
+        # No match found - construct helpful error message
+        avail_list = ", ".join(f"{s['name']} ({s['id']})" for s in scenarios)
+        raise ScenarioNotFoundError(
+            f"Scenario '{identifier}' not found. Available scenarios: {avail_list}"
+        )
