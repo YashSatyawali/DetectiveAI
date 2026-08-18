@@ -198,3 +198,47 @@ DetectiveAI features a centralized application logging system using Python's sta
 
 For details on component responsibilities, state authority principles, AI agent architecture, and development phases, see [`docs/architecture.md`](docs/architecture.md).
 
+## Web Frontend
+
+DetectiveAI includes a React + TypeScript + Vite web interface, located inside the `frontend/` directory. The frontend communicates with the FastAPI backend endpoints dynamically using player-safe data Transfer Objects (DTOs) preventing any exposure of scenario ground-truth information.
+
+### 1. Setup & Installation
+
+Navigate into the `frontend/` directory and install the required dependencies:
+
+```bash
+cd frontend
+npm install
+```
+
+### 2. Running the Development Server
+
+Start the local Vite dev server:
+
+```bash
+npm run dev
+```
+
+By default, the Vite application runs at `http://localhost:5173/` and expects the backend API at `http://localhost:8000`. You can configure the API endpoint URL by setting the `VITE_API_BASE_URL` environment variable:
+
+```bash
+# Example with custom backend port
+VITE_API_BASE_URL=http://localhost:8000 npm run dev
+```
+
+### 3. Running Frontend Tests
+
+Execute the frontend Vitest unit and integration test suite:
+
+```bash
+npm run test
+```
+
+### 4. Building for Production
+
+Compile and bundle the production assets:
+
+```bash
+npm run build
+```
+
