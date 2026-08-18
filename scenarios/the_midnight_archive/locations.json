@@ -53,7 +53,7 @@
     "id": "location_06",
     "name": "Secure Databank Vault",
     "description": "Reinforced underground vault housing the primary Project ORION encrypted storage server.",
-    "is_initial_unlocked": true,
+    "is_initial_unlocked": false,
     "metadata": {
       "floor": "Basement 2",
       "biometric_required": true

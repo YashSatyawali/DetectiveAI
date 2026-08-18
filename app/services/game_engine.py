@@ -259,16 +259,54 @@ class GameEngine:
         visited = set(meta.get("visited_location_ids", []))
 
         # Check accessibility rule
-        if not location.is_initial_unlocked and target_id not in visited:
+        # Accessible if initially unlocked, already visited, or required by the
+        # active/past stages
+        is_accessible = location.is_initial_unlocked or target_id in visited
+        if not is_accessible:
+            curr_stage_id = meta.get("current_stage_id")
+            curr_stage = next(
+                (st for st in scenario.stages if st.id == curr_stage_id), None
+            )
+            curr_stage_order = curr_stage.order if curr_stage else 1
+            for st in scenario.stages:
+                if st.order <= curr_stage_order:
+                    reqs = st.requirements or {}
+                    req_locs = reqs.get("required_location_ids") or reqs.get(
+                        "location_ids", []
+                    )
+                    if target_id in req_locs:
+                        is_accessible = True
+                        break
+
+        if not is_accessible:
+            # Find the stage in the scenario that first requires this location
+            stage_req = None
+            for st in scenario.stages:
+                reqs = st.requirements or {}
+                req_locs = reqs.get("required_location_ids") or reqs.get(
+                    "location_ids", []
+                )
+                if target_id in req_locs:
+                    stage_req = st
+                    break
+
+            lock_reason = (
+                f"This location becomes accessible during Stage {stage_req.order}."
+                if stage_req
+                else "This location is locked."
+            )
+
             logger.warning(
                 "Location %s (%s) is locked for session_id=%s",
                 location.name,
                 target_id,
                 session.id,
             )
-            raise LocationLockedError(
+            exc = LocationLockedError(
                 f"Location '{location.name}' ({target_id}) is locked."
             )
+            exc.lock_reason = lock_reason
+            raise exc
 
         prev_loc_id = session.current_location_id
         session.current_location_id = target_id

@@ -12,6 +12,7 @@ from app.scenarios.loader import ScenarioLoader
 from app.scenarios.registry import ScenarioRegistry
 from app.services.game_engine import GameEngine
 from app.services.investigation_context import InvestigationContextBuilder
+from app.services.player_state import PlayerStateBuilder
 from app.services.session_service import SessionService
 from app.services.solution_service import SolutionEvaluationService
 from app.services.suspect_conversation import SuspectConversationManager
@@ -96,4 +97,17 @@ def get_solution_evaluation_service(
         game_engine=game_engine,
         loader=loader,
         ctx_builder=ctx_builder,
+    )
+
+
+def get_player_state_builder(
+    session_service: SessionService = Depends(get_session_service),
+    loader: ScenarioLoader = Depends(get_scenario_loader),
+    game_engine: GameEngine = Depends(get_game_engine),
+) -> PlayerStateBuilder:
+    """Provide PlayerStateBuilder instance."""
+    return PlayerStateBuilder(
+        session_service=session_service,
+        loader=loader,
+        game_engine=game_engine,
     )

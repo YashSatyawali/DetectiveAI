@@ -49,6 +49,13 @@ def test_api_confidentiality_across_all_endpoints(api_client, monkeypatch):
     for secret in GROUND_TRUTH_SECRETS:
         assert secret not in state_str
 
+    # 4.5. GET /api/v1/sessions/{id}/state (new endpoint)
+    p_state_resp = api_client.get(f"/api/v1/sessions/{sid}/state")
+    assert p_state_resp.status_code == 200
+    p_state_str = p_state_resp.text
+    for secret in GROUND_TRUTH_SECRETS:
+        assert secret not in p_state_str
+
     # 5. GET /api/v1/sessions/{id}/context
     ctx_resp = api_client.get(f"/api/v1/sessions/{sid}/context")
     assert ctx_resp.status_code == 200

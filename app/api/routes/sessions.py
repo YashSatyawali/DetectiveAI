@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import (
     get_db,
     get_investigation_context_builder,
+    get_player_state_builder,
     get_scenario_registry,
     get_session_service,
 )
@@ -16,6 +17,7 @@ from app.api.schemas.session import (
     AvailableActionsResponse,
     CreateSessionRequest,
     GameEventResponse,
+    PlayerInvestigationState,
     SessionCreatedResponse,
     SessionLocationResponse,
     SessionStageResponse,
@@ -27,6 +29,7 @@ from app.services.investigation_context import (
     InvestigationContext,
     InvestigationContextBuilder,
 )
+from app.services.player_state import PlayerStateBuilder
 from app.services.session_service import SessionService
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
@@ -166,3 +169,13 @@ def get_session_history(
         )
         for e in events
     ]
+
+
+@router.get("/{session_id}/state", response_model=PlayerInvestigationState)
+def get_player_investigation_state(
+    session_id: str,
+    db: Session = Depends(get_db),
+    state_builder: PlayerStateBuilder = Depends(get_player_state_builder),
+) -> PlayerInvestigationState:
+    """Retrieve complete player-facing investigation state DTO."""
+    return state_builder.build_state(session_id, db=db)

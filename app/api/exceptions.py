@@ -35,16 +35,21 @@ from app.scenarios.exceptions import (
 logger = logging.getLogger(__name__)
 
 
-def make_error_response(status_code: int, code: str, message: str) -> JSONResponse:
+def make_error_response(
+    status_code: int, code: str, message: str, lock_reason: str | None = None
+) -> JSONResponse:
     """Construct a standardized JSON error response."""
+    content = {
+        "error": {
+            "code": code,
+            "message": message,
+        }
+    }
+    if lock_reason is not None:
+        content["error"]["lock_reason"] = lock_reason
     return JSONResponse(
         status_code=status_code,
-        content={
-            "error": {
-                "code": code,
-                "message": message,
-            }
-        },
+        content=content,
     )
 
 
@@ -137,8 +142,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: LocationLockedError
     ) -> JSONResponse:
         logger.warning("Location locked: %s", exc)
+        lock_reason = getattr(exc, "lock_reason", None)
         return make_error_response(
-            status.HTTP_409_CONFLICT, "LOCATION_LOCKED", str(exc)
+            status.HTTP_409_CONFLICT,
+            "LOCATION_LOCKED",
+            str(exc),
+            lock_reason=lock_reason,
         )
 
     @app.exception_handler(StageRequirementsNotMetError)

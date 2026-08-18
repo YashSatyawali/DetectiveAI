@@ -117,11 +117,26 @@ class InvestigationContextBuilder:
         loc_desc = cur_loc.description if cur_loc else None
 
         # Available / Unlocked locations vs Locked locations
-        avail_locs = [
-            {"id": loc.id, "name": loc.name, "description": loc.description}
-            for loc in public_scenario.locations
-            if loc.is_initial_unlocked or loc.id in state_dto.visited_location_ids
-        ]
+        avail_locs = []
+        for loc in public_scenario.locations:
+            is_avail = (
+                loc.is_initial_unlocked or loc.id in state_dto.visited_location_ids
+            )
+            if not is_avail:
+                for st in public_scenario.stages:
+                    if st.order <= state_dto.current_stage_order:
+                        reqs = st.requirements or {}
+                        req_locs = reqs.get("required_location_ids") or reqs.get(
+                            "location_ids", []
+                        )
+                        if loc.id in req_locs:
+                            is_avail = True
+                            break
+            if is_avail:
+                avail_locs.append(
+                    {"id": loc.id, "name": loc.name, "description": loc.description}
+                )
+
         avail_ids = {item["id"] for item in avail_locs}
 
         # Identify required location IDs up to current stage
