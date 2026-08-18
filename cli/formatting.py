@@ -35,7 +35,7 @@ def tag_locations_in_text(text: str, locations: list[dict[str, Any]]) -> str:
         if not name:
             continue
         # Use negative lookbehind and lookahead to avoid double tagging
-        pattern = r'(?<!\[LOCATION: )' + re.escape(name) + r'(?!\])'
+        pattern = r"(?<!\[LOCATION: )" + re.escape(name) + r"(?!\])"
         result = re.sub(pattern, f"[LOCATION: {name}]", result)
     return result
 
@@ -109,6 +109,7 @@ def format_action_result(result: ActionResultDTO) -> str:
     locations = []
     try:
         from app.scenarios.registry import ScenarioRegistry
+
         registry = ScenarioRegistry()
         scenario_def = registry.get_scenario(result.state.scenario_id)
         locations = [{"name": loc.name} for loc in scenario_def.locations]
@@ -186,9 +187,7 @@ def format_investigation_status(
     context: InvestigationContext, show_actions: bool = True
 ) -> str:
     """Format compact, informative player-visible investigation status."""
-    stage_name = (
-        f"Stage {context.current_stage_order} - {context.current_stage_name}"
-    )
+    stage_name = f"Stage {context.current_stage_order} - {context.current_stage_name}"
     loc_display = (
         f"{context.current_location_name or 'None'} "
         f"({context.current_location_id or 'None'})"

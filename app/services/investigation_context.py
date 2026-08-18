@@ -55,7 +55,7 @@ class InvestigationContext(BaseModel):
     )
     available_suspects: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Suspects currently available for interrogation based on stage/discovery",
+        description="Suspects currently available based on stage/discovery",
     )
     completed_stages: list[str] = Field(
         default_factory=list, description="List of completed stage IDs"
@@ -129,7 +129,9 @@ class InvestigationContextBuilder:
         for st in public_scenario.stages:
             if st.order <= state_dto.current_stage_order:
                 reqs = st.requirements or {}
-                req_locs = reqs.get("required_location_ids") or reqs.get("location_ids", [])
+                req_locs = reqs.get("required_location_ids") or reqs.get(
+                    "location_ids", []
+                )
                 for loc_id in req_locs:
                     required_loc_ids.add(loc_id)
 

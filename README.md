@@ -6,15 +6,15 @@ An interactive AI-powered detective investigation engine backend and CLI game.
 
 DetectiveAI allows players to investigate fictional mystery cases by listing suspects, searching locations, interviewing suspects, discovering evidence, tracking timelines, and submitting final case solutions.
 
-The core architecture strictly separates **authoritative game state and deterministic logic** (handled by FastAPI / Python backend engine) from **AI reasoning & agent behavior** (to be powered by Lamatic in future milestones).
+The core architecture strictly separates **authoritative game state and deterministic logic** (handled by the Game Engine and Session Service) from **AI reasoning & agent behavior** (powered by Lamatic AgentKit workflows).
 
-## Milestone 0 Status
+## Features & Architecture
 
-Milestone 0 establishes the foundation and architecture:
-* Clean Python project structure using `pyproject.toml`
-* FastAPI application base with `/health` endpoint
-* Pytest test harness and Ruff linting configuration
-* Comprehensive architecture specification in [`docs/architecture.md`](docs/architecture.md)
+* **Authoritative Game Engine**: Deterministic state transitions, action validations, stage requirements, and audit event logs.
+* **REST API Layer (FastAPI)**: Versioned `/api/v1` endpoints for sessions, actions, suspect interrogation, forensic evidence examination, and solution grading.
+* **AI Interrogation & Examination**: Multi-turn dialogue with suspects and forensic evidence analysis via Lamatic AgentKit workflows with offline fallback support.
+* **Rich CLI Interface**: Typer and Rich console presentation adapter with interactive subshells, colored evidence tags, and AI markdown rendering.
+* **Zero Ground-Truth Leaks**: Strict isolation ensuring players and AI agents never receive confidential case solutions or hidden events.
 
 ## Quick Start
 
@@ -41,15 +41,32 @@ pip install -e ".[dev]"
 Start the FastAPI application with Uvicorn:
 
 ```bash
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
 The server will be available at:
 * Health Endpoint: `http://127.0.0.1:8000/health`
 * Interactive API Documentation (Swagger UI): `http://127.0.0.1:8000/docs`
-* OpenAPI Schema: `http://127.0.0.1:8000/openapi.json`
+* Versioned API Base: `http://127.0.0.1:8000/api/v1`
 
-### 3. CLI Usage
+### 3. REST API Quick Reference
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Application health check |
+| `GET` | `/api/v1/scenarios` | List player-safe scenario summaries |
+| `GET` | `/api/v1/scenarios/{id}` | Inspect player-safe scenario details |
+| `POST` | `/api/v1/sessions` | Start new session (`{"scenario": "the_midnight_archive"}`) |
+| `GET` | `/api/v1/sessions/{id}` | Retrieve session state |
+| `GET` | `/api/v1/sessions/{id}/context` | Retrieve player-safe investigation context |
+| `GET` | `/api/v1/sessions/{id}/available-actions` | Retrieve permitted player actions |
+| `GET` | `/api/v1/sessions/{id}/history` | Retrieve chronological audit event log |
+| `POST` | `/api/v1/sessions/{id}/actions` | Execute deterministic action (`move`, `inspect`, `interview`, `examine_evidence`, `advance`) |
+| `POST` | `/api/v1/sessions/{id}/suspects/{suspect_id}/interrogate` | Interrogate suspect via AI dialog (`{"message": "..."}`) |
+| `POST` | `/api/v1/sessions/{id}/evidence/{evidence_id}/examine` | Examine evidence with AI forensic interpretation |
+| `POST` | `/api/v1/sessions/{id}/solve` | Submit case hypothesis for scoring and feedback |
+
+### 4. CLI Usage
 
 Discover scenarios, start investigations, execute actions, and enter interactive play mode via Typer CLI:
 
@@ -58,18 +75,18 @@ Discover scenarios, start investigations, execute actions, and enter interactive
 python -m cli scenarios
 
 # Start a new investigation session for a scenario
-python -m cli start test_case
+python -m cli start the_midnight_archive
 
 # View player-facing game state for a session
 python -m cli state <session_id>
 
 # Execute a single investigation action (inspect, move, interview, examine, advance, solve)
 python -m cli action <session_id> inspect
-python -m cli action <session_id> move location_01
-python -m cli action <session_id> examine evidence_01
-python -m cli action <session_id> interview suspect_01
+python -m cli action <session_id> move location_02
+python -m cli action <session_id> examine evidence_02
+python -m cli action <session_id> interview suspect_02
 python -m cli action <session_id> advance
-python -m cli action <session_id> solve suspect_01
+python -m cli action <session_id> solve "Sofia Bennett"
 
 # View chronological audit event history for a session
 python -m cli history <session_id>
@@ -78,7 +95,7 @@ python -m cli history <session_id>
 python -m cli play <session_id>
 ```
 
-### 4. Running Quality & Verification Tools
+### 5. Running Quality & Verification Tools
 
 Run tests with `pytest`:
 

@@ -82,7 +82,7 @@ class SolutionEvaluator:
             "public_timeline": [
                 {
                     "event_id": t.id,
-                    "timestamp": t.timestamp,
+                    "timestamp": t.timestamp_str,
                     "description": t.description,
                 }
                 for t in player_scenario.timeline

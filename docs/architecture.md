@@ -432,7 +432,7 @@ Core Principles:
 * **Milestone 5C**: AI-Powered Suspect Interrogation (`SuspectKnowledge`, `SuspectKnowledgeBuilder`, `SuspectAgent`, `SuspectConversationManager`, CLI `interrogate` subshell).
 * **Milestone 5D**: AI-Powered Evidence Examination (`EvidenceKnowledge`, `EvidenceKnowledgeBuilder`, `EvidenceAgent`, `LAMATIC_EVIDENCE_FLOW_ID`, CLI `examine` AI analysis).
 * **Milestone 6**: AI Case Resolution & Reasoning Evaluation (`SolutionSubmission`, `SolutionEvaluation`, `SolutionEvaluator`, `SolutionEvaluationService`, `LAMATIC_SOLUTION_FLOW_ID`, CLI `solve` interactive command).
-* **Milestone 7 (Current)**: Production-Quality Application Logging System (`app/core/logging.py`, `RotatingFileHandler`, execution metrics, audit trail, security & secret redaction).
+* **Milestone 7**: FastAPI Application & REST API Layer (API router `/api/v1`, scenario endpoints, session lifecycle, deterministic action execution, AI interrogation & examination endpoints, solution evaluation, standardized error envelopes, zero ground-truth leakage guarantee).
 
 ---
 
@@ -466,4 +466,41 @@ FastAPI Server Startup / Typer CLI Execution
 5. **Confidentiality & Secret Isolation**:
    - Secrets, API keys (`LAMATIC_API_KEY`), and Bearer tokens are never logged.
    - Ground truth fields (`solution.culprit_id`, `is_culprit`, secret events) are excluded from logs.
+
+---
+
+## 22. FastAPI REST API Layer (Milestone 7)
+
+DetectiveAI provides a complete RESTful API layer under `/api/v1`, serving as a thin presentation adapter over the authoritative `GameEngine`, `SessionService`, `ScenarioRegistry`, and Lamatic agent services.
+
+### API Architecture & Design Rules
+1. **Presentation Adapter Only**: The FastAPI layer contains zero business or game rules. All state transitions, validations, stage requirements, and scoring are delegated directly to backend services.
+2. **Standardized Error Envelope**: All domain, scenario, Lamatic, and validation errors are mapped to consistent JSON responses:
+   ```json
+   {
+     "error": {
+       "code": "SESSION_NOT_FOUND",
+       "message": "Session '...' does not exist."
+     }
+   }
+   ```
+3. **Zero Ground-Truth Leaks**: Player-facing endpoints strictly omit confidential fields (`culprit_id`, `is_culprit`, `motive`, `solution_summary`, secret timeline events, undiscovered evidence).
+
+### Endpoint Reference
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Application health check returning `{"status": "ok", "version": "0.1.0"}` |
+| `GET` | `/api/v1/scenarios` | List player-safe summaries of registered scenarios |
+| `GET` | `/api/v1/scenarios/{id}` | Inspect player-safe details of a scenario |
+| `POST` | `/api/v1/sessions` | Create and start a new game session (`{"scenario": "the_midnight_archive"}`) |
+| `GET` | `/api/v1/sessions/{id}` | Get player-facing `GameStateDTO` |
+| `GET` | `/api/v1/sessions/{id}/context` | Get player-safe `InvestigationContext` |
+| `GET` | `/api/v1/sessions/{id}/available-actions` | Get dynamically permitted actions for current state |
+| `GET` | `/api/v1/sessions/{id}/history` | Get chronological player-visible audit event history |
+| `POST` | `/api/v1/sessions/{id}/actions` | Execute deterministic action (`move`, `inspect`, `interview`, `examine_evidence`, `advance`) |
+| `POST` | `/api/v1/sessions/{id}/suspects/{suspect_id}/interrogate` | Perform AI dialogue interrogation turn with a suspect |
+| `POST` | `/api/v1/sessions/{id}/evidence/{evidence_id}/examine` | Examine evidence with deterministic update and AI forensic analysis |
+| `POST` | `/api/v1/sessions/{id}/solve` | Submit case solution hypothesis for rubric scoring and evaluation |
+
 
